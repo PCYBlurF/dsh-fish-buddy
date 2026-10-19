@@ -1,0 +1,11 @@
+{
+  "mascot": "chibi",
+  "scale": 1.0,
+  "pollMs": 600,
+  "completionWindowMinutes": 10,
+  "activeWindowMinutes": 20,
+  "dshUrl": "http://127.0.0.1:11821",
+  "notify": true,
+  "sound": true,
+  "tray": true
+}

@@ -1,0 +1,23 @@
+# runtime state (generated)
+state.json
+state.json.tmp
+ui.json
+*.pid
+logs/
+
+# local-only artwork (fan art, not redistributed)
+assets/whale.png
+
+# local settings (copy config.example.json to config.json)
+config.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# node
+node_modules/
