@@ -1195,7 +1195,7 @@ $script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList
 $script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
 
 $script:GlassWhite = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 244, 248, 252))
-$script:GlassClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(205, 242, 246, 251))
+$script:GlassClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(51, 242, 246, 251))
 $script:GlassBorderWhite = New-Object Windows.Media.LinearGradientBrush
 $script:GlassBorderWhite.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassBorderWhite.EndPoint = New-Object Windows.Point(1, 1)
@@ -1209,7 +1209,7 @@ $script:GlassBorderClear.EndPoint = New-Object Windows.Point(1, 1)
 [void]$script:GlassBorderClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
 [void]$script:GlassBorderClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
 $script:GlassTailWhite = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 244, 248, 252))
-$script:GlassTailClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(205, 242, 246, 251))
+$script:GlassTailClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(51, 242, 246, 251))
 $script:GlassTitleBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 22, 33, 61))
 $script:GlassTaskBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 43, 56, 85))
 $script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 82, 98, 127))
@@ -1246,12 +1246,12 @@ function Apply-Material {
       if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:GlassMetaBrush }
       if ($null -ne $script:BarTrack) { $script:BarTrack.Background = $script:GlassBarTrackBrush }
     } else {
-      if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $null }
-      if ($null -ne $script:TitleText) { $script:TitleText.Foreground = $script:GlassTitleBrush }
-      if ($null -ne $script:TaskText) { $script:TaskText.Foreground = $script:GlassTaskBrush }
-      if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:GlassCountBrush }
-      if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:GlassMetaBrush }
-      if ($null -ne $script:BarTrack) { $script:BarTrack.Background = $script:GlassBarTrackBrush }
+      if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $script:GlassTextShadow }
+      if ($null -ne $script:TitleText) { $script:TitleText.Foreground = $script:TitleColorDefault }
+      if ($null -ne $script:TaskText) { $script:TaskText.Foreground = $script:TaskColorDefault }
+      if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:CountColorDefault }
+      if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:MetaColorDefault }
+      if ($null -ne $script:BarTrack) { $script:BarTrack.Background = $script:BarTrackColorDefault }
     }
   } else {
     $script:Bubble.Background = $script:BubbleBrushDefault
