@@ -162,6 +162,10 @@ $script:BubbleSlide = Find-Name 'BubbleSlide'
 $script:BubbleBrushDefault = $script:Bubble.Background
 $script:BubbleBorderDefault = $script:Bubble.BorderBrush
 $script:BubbleTailDefault = if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill } else { $null }
+$script:CountColorDefault = $script:CountText.Foreground
+$script:MetaColorDefault = $script:MetaText.Foreground
+$script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 213, 224, 255))
+$script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
 $script:GlassBrush = $null
 $script:GlassRect = ''
 $script:GlassBusy = $false
@@ -1130,7 +1134,7 @@ $script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
 $script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
 $script:GlassTextShadow.BlurRadius = 4
 $script:GlassTextShadow.ShadowDepth = 0
-$script:GlassTextShadow.Opacity = 0.5
+$script:GlassTextShadow.Opacity = 0.6
 $script:GlassFallback = New-Object Windows.Media.LinearGradientBrush
 $script:GlassFallback.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassFallback.EndPoint = New-Object Windows.Point(0.35, 1)
@@ -1258,12 +1262,16 @@ function Apply-Material {
     if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:GlassTail }
     $script:GlassTint.Visibility = [Windows.Visibility]::Visible
     if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $script:GlassTextShadow }
+    if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:GlassCountBrush }
+    if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:GlassMetaBrush }
   } else {
     $script:Bubble.Background = $script:BubbleBrushDefault
     $script:Bubble.BorderBrush = $script:BubbleBorderDefault
     if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:BubbleTailDefault }
     $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
     if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $null }
+    if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:CountColorDefault }
+    if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:MetaColorDefault }
   }
 }
 
