@@ -208,7 +208,7 @@ function Load-Bitmap([string]$path) {
 if ($script:SpriteMode -and $null -ne $script:MascotImage) {
   foreach ($name in @('idle', 'working', 'celebrate', 'error', 'sleep', 'think')) {
     $list = @()
-    for ($i = 0; $i -lt 8; $i++) {
+    for ($i = 0; $i -lt 16; $i++) {
       $fp = Join-Path $script:SpriteDir ("{0}_{1}.png" -f $name, $i)
       if (-not (Test-Path -LiteralPath $fp)) { break }
       try { $list += Load-Bitmap $fp } catch { }
@@ -216,6 +216,9 @@ if ($script:SpriteMode -and $null -ne $script:MascotImage) {
     if ($list.Count -gt 0) { $script:Sprites[$name] = $list }
   }
   Write-DebugLog ("chibi sprites: " + (($script:Sprites.Keys | Sort-Object) -join ','))
+  $frameParts = @()
+  foreach ($k in ($script:Sprites.Keys | Sort-Object)) { $frameParts += ($k + '=' + $script:Sprites[$k].Count) }
+  Write-DebugLog ("chibi frames: " + ($frameParts -join ' '))
 } elseif ($null -ne $script:MascotImage) {
   try {
     $imgPath = Join-Path $script:AppDir 'assets\whale.png'
@@ -1106,8 +1109,8 @@ function Render-Idle {
   if ($null -eq $script:IdleSince) { $script:IdleSince = [DateTime]::Now }
   $idleFor = ([DateTime]::Now - $script:IdleSince).TotalSeconds
   if ([DateTime]::Now -lt $script:PetUntil) { Set-Sprite 'celebrate' 150 }
-  elseif ($idleFor -gt 25) { Set-Sprite 'sleep' 900 }
-  else { Set-Sprite 'idle' 560 }
+  elseif ($idleFor -gt 25) { Set-Sprite 'sleep' 300 }
+  else { Set-Sprite 'idle' 187 }
   if ($idleFor -gt 12) {
     Hide-Bubble
   } else {
@@ -1129,7 +1132,7 @@ function Render-Working($session, [double]$now) {
   Stop-Celebrate
   Set-Mouth $false
   Set-Alert $false
-  if ([DateTime]::Now -lt $script:PetUntil) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'working' 170 }
+  if ([DateTime]::Now -lt $script:PetUntil) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'working' 60 }
   Set-DotColor '#7C93FF'
   Set-BubbleVisible $true
 
@@ -1203,7 +1206,7 @@ function Render-Done($session, $lastTurn) {
   Set-Mouth $false
   Set-Alert $false
   $endedFor = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [double](Get-Prop $lastTurn 'endedAt')
-  if (([DateTime]::Now -lt $script:PetUntil) -or $endedFor -lt 7000) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'idle' 560 }
+  if (([DateTime]::Now -lt $script:PetUntil) -or $endedFor -lt 7000) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'idle' 187 }
   Set-DotColor '#3DDC97'
   Set-BubbleVisible $true
   $script:IdleSince = $null
@@ -1255,7 +1258,7 @@ function Render-Aborted($session, $lastTurn) {
   Stop-Celebrate
   Set-Mouth $false
   Set-Alert $false
-  Set-Sprite 'think' 900
+  Set-Sprite 'think' 1200
   Set-DotColor '#F0B35C'
   Set-BubbleVisible $true
   $script:IdleSince = $null
@@ -1353,7 +1356,7 @@ $script:Tick.Add_Tick({
         Set-BubbleVisible $true
         Set-Mouth $false
         Set-Alert $false
-        Set-Sprite 'think' 900
+        Set-Sprite 'think' 1200
         Set-DotColor '#F0B35C'
         $script:TitleText.Text = '正在重新连接…'
         $script:CountText.Text = ''
@@ -1372,7 +1375,7 @@ $script:Tick.Add_Tick({
       Set-BubbleVisible $true
       Set-Mouth $false
       Set-Alert $false
-      Set-Sprite 'think' 900
+      Set-Sprite 'think' 1200
       Set-DotColor '#5C6B95'
       $script:TitleText.Text = 'DSH 大肥鱼'
       $script:TaskText.Text = '正在连接 DSH…'
