@@ -179,8 +179,11 @@ if ($null -ne $script:GlassNoise) {
     }
   } catch { }
 }
-$script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 213, 224, 255))
-$script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
+$script:GlassTitleBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 22, 33, 61))
+$script:GlassTaskBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 43, 56, 85))
+$script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 82, 98, 127))
+$script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 94, 111, 140))
+$script:GlassBarTrackBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 220, 229, 242))
 
 
 $script:TitleText = Find-Name 'TitleText'
@@ -188,6 +191,12 @@ $script:CountText = Find-Name 'CountText'
 $script:TaskText = Find-Name 'TaskText'
 $script:MetaText = Find-Name 'MetaText'
 $script:BarTrack = Find-Name 'BarTrack'
+$script:TitleColorDefault = $script:TitleText.Foreground
+$script:TaskColorDefault = $script:TaskText.Foreground
+$script:CountColorDefault = $script:CountText.Foreground
+$script:MetaColorDefault = $script:MetaText.Foreground
+$script:BarTrackColorDefault = $script:BarTrack.Background
+$script:BubbleTailStrokeDefault = if ($null -ne $script:BubbleTail) { $script:BubbleTail.Stroke } else { $null }
 $script:BarFill = Find-Name 'BarFill'
 $script:Dot = Find-Name 'Dot'
 $script:FishHost = Find-Name 'FishHost'
@@ -1128,10 +1137,10 @@ function Add-SettingsMenu {
 $script:GlassBorder = New-Object Windows.Media.LinearGradientBrush
 $script:GlassBorder.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
-[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
-[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
-[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
-$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(170, 230, 234, 242))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(170, 175, 190, 212)), 0))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(70, 125, 145, 172)), 0.45))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(150, 205, 218, 236)), 1))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(248, 250, 252, 255))
 $script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
 $script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
 $script:GlassTextShadow.BlurRadius = 4
@@ -1161,17 +1170,17 @@ function Get-BubbleRect {
 $script:GlassLive = New-Object Windows.Media.LinearGradientBrush
 $script:GlassLive.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassLive.EndPoint = New-Object Windows.Point(0.35, 1)
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(38, 255, 255, 255)), 0))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(20, 255, 255, 255)), 0.2))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(102, 11, 13, 20)), 0.55))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(179, 11, 13, 20)), 1))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(252, 255, 255, 255)), 0))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(246, 244, 249, 255)), 0.25))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(242, 234, 241, 251)), 0.6))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(250, 255, 255, 255)), 1))
 $script:GlassBorder = New-Object Windows.Media.LinearGradientBrush
 $script:GlassBorder.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
-$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(170, 230, 234, 242))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(248, 250, 252, 255))
 $script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
 $script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
 $script:GlassTextShadow.BlurRadius = 4
@@ -1185,21 +1194,35 @@ function Apply-Material {
   if ($script:Material -eq 'liquid') {
     $script:Bubble.Background = $script:GlassLive
     $script:Bubble.BorderBrush = $script:GlassBorder
-    if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:GlassTail }
-    $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
-    if ($null -ne $script:GlassNoise) { $script:GlassNoise.Visibility = [Windows.Visibility]::Visible }
-    if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $script:GlassTextShadow }
-    if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:GlassCountBrush }
-    if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:GlassMetaBrush }
-  } else {
-    $script:Bubble.Background = $script:BubbleBrushDefault
-    $script:Bubble.BorderBrush = $script:BubbleBorderDefault
-    if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:BubbleTailDefault }
+    if ($null -ne $script:BubbleTail) {
+      $script:BubbleTail.Fill = $script:GlassTail
+      $script:BubbleTail.Stroke = $script:GlassBorder
+      $script:BubbleTail.StrokeThickness = 1
+    }
     $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
     if ($null -ne $script:GlassNoise) { $script:GlassNoise.Visibility = [Windows.Visibility]::Collapsed }
     if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $null }
+    if ($null -ne $script:TitleText) { $script:TitleText.Foreground = $script:GlassTitleBrush }
+    if ($null -ne $script:TaskText) { $script:TaskText.Foreground = $script:GlassTaskBrush }
+    if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:GlassCountBrush }
+    if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:GlassMetaBrush }
+    if ($null -ne $script:BarTrack) { $script:BarTrack.Background = $script:GlassBarTrackBrush }
+  } else {
+    $script:Bubble.Background = $script:BubbleBrushDefault
+    $script:Bubble.BorderBrush = $script:BubbleBorderDefault
+    if ($null -ne $script:BubbleTail) {
+      $script:BubbleTail.Fill = $script:BubbleTailDefault
+      $script:BubbleTail.Stroke = $script:BubbleTailStrokeDefault
+      $script:BubbleTail.StrokeThickness = 0
+    }
+    $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
+    if ($null -ne $script:GlassNoise) { $script:GlassNoise.Visibility = [Windows.Visibility]::Collapsed }
+    if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $null }
+    if ($null -ne $script:TitleText) { $script:TitleText.Foreground = $script:TitleColorDefault }
+    if ($null -ne $script:TaskText) { $script:TaskText.Foreground = $script:TaskColorDefault }
     if ($null -ne $script:CountText) { $script:CountText.Foreground = $script:CountColorDefault }
     if ($null -ne $script:MetaText) { $script:MetaText.Foreground = $script:MetaColorDefault }
+    if ($null -ne $script:BarTrack) { $script:BarTrack.Background = $script:BarTrackColorDefault }
   }
 }
 
@@ -1209,7 +1232,7 @@ function Show-ContextMenu {
   [void](Add-ContextItem '摸摸头' { Pet-Mascot })
   try { Add-SizeRow } catch { Write-DebugLog ("Add-SizeRow failed: " + $_.Exception.Message) }
   if ($script:Mascot -eq 'chibi') {
-    $matLabel = if ($script:Material -eq 'liquid') { '材质：液态玻璃' } else { '材质：默认' }
+    $matLabel = if ($script:Material -eq 'liquid') { '材质：白色磨砂' } else { '材质：默认' }
     [void](Add-ContextItem $matLabel { Toggle-Material })
   }
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))

@@ -42,7 +42,7 @@ The "liquid glass" bubble material is inspired by
 (package `@wxperia/liquid-glass-vue`, MIT).
 
 - No Vue/TypeScript code or shader files are copied into this repository.
-- The WPF implementation is independent: it uses a semi-transparent live
-overlay with a generated frost cloud texture and a specular border (no
-screen capture, blur or shader) to approximate the referenced material.
+- The WPF implementation is independent: the white frosted material uses an
+opaque light gradient, dark text and a specular border (no screen capture,
+blur or shader) to approximate the referenced material.
 - The reference project's package metadata declares the MIT license.
