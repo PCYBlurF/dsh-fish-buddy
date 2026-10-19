@@ -205,9 +205,14 @@ uninstall.cmd
 
 会停止挂件、备份并移除 `cordis.patch.yml` 里的插件段、清理开机自启；仓库目录保留，可自行删除。重启 DSH 后插件彻底消失。
 
-## 致谢与许可
+## 致谢
 
 - **Q 版鲸鱼娘帧**：来自 [vlln/whale-girl](https://github.com/vlln/whale-girl)，MIT License，Copyright (c) 2026 Sam Gao (vlln)。许可全文见 `assets/whale/LICENSE.txt`。
-- **代码**：MIT，见 [LICENSE](LICENSE)。
 - 「鲸鱼娘」是社区同人形象，「DeepSeek」名称与商标归其所有者；本项目为非官方作品。
-- 更多素材说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 许可证
+
+本项目代码以 [MIT License](LICENSE) 开源，可自由使用、修改和分发，保留版权与许可声明即可。
+
+- 默认 Q 版鲸鱼娘素材同样为 MIT 授权，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 第三方素材的许可见各自说明。
