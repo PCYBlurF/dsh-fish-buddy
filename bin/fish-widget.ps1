@@ -619,7 +619,7 @@ function Init-Tray {
     $menu.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
     $menu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
     $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
-    try { $menu.Renderer = New-Object System.Windows.Forms.ToolStripProfessionalRenderer (New-Object DshFishMenuColors) } catch { }
+    try { $menu.Renderer = New-Object DshFishRenderer (New-Object DshFishMenuColors) } catch { }
     $miOpen = $menu.Items.Add('打开 DSH')
     $miOpen.Add_Click({ Open-Dsh })
     $miPet = $menu.Items.Add('摸摸头')
@@ -1096,6 +1096,21 @@ public class DshFishMenuColors : ProfessionalColorTable {
   public override Color SeparatorDark { get { return Line; } }
   public override Color SeparatorLight { get { return Line; } }
 }
+public class DshFishRenderer : ToolStripProfessionalRenderer {
+  public DshFishRenderer(ProfessionalColorTable table) : base(table) { }
+  protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e) {
+    Rectangle r = e.ArrowRectangle;
+    if (r.Width <= 0 || r.Height <= 0) { base.OnRenderArrow(e); return; }
+    using (SolidBrush b = new SolidBrush(Color.FromArgb(242, 246, 255))) {
+      Point[] pts = new Point[] {
+        new Point(r.Left + 2, r.Top + 1),
+        new Point(r.Right - 1, r.Top + (r.Height / 2)),
+        new Point(r.Left + 2, r.Bottom - 1)
+      };
+      e.Graphics.FillPolygon(b, pts);
+    }
+  }
+}
 "@ -ReferencedAssemblies System.Windows.Forms, System.Drawing -ErrorAction SilentlyContinue
 } catch { }
 
@@ -1107,7 +1122,7 @@ $script:Menu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
 $script:Menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $script:Menu.Padding = New-Object System.Windows.Forms.Padding(4)
 try {
-  $script:Menu.Renderer = New-Object System.Windows.Forms.ToolStripProfessionalRenderer (New-Object DshFishMenuColors)
+  $script:Menu.Renderer = New-Object DshFishRenderer (New-Object DshFishMenuColors)
 } catch { }
 
 function Add-ContextItem([string]$text, [scriptblock]$action, [bool]$enabled = $true) {
