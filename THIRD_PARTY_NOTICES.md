@@ -34,3 +34,15 @@ artist.
 - `assets/fish.ico` / `assets/fish.png` are derived from the MIT chibi sprites.
 - No fonts are bundled; the UI uses fonts already installed on Windows
   (Microsoft YaHei UI, Segoe UI).
+
+## Liquid-glass material
+
+The "liquid glass" bubble material is inspired by
+[WXperia/liquid-glass-vue](https://github.com/WXperia/liquid-glass-vue)
+(package `@wxperia/liquid-glass-vue`, MIT).
+
+- No Vue/TypeScript code or shader files are copied into this repository.
+- The WPF implementation is independent: it captures the screen region behind
+the bubble, applies a Gaussian blur and color lift, and overlays tint and
+specular border layers to approximate the referenced material.
+- The reference project's package metadata declares the MIT license.

@@ -120,6 +120,8 @@ $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } els
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
 $script:Version = '0.1.0'
+$script:Material = 'default'
+try { if ($null -ne $script:Ui.material -and [string]$script:Ui.material -eq 'liquid') { $script:Material = 'liquid' } } catch { }
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $script:PinnedSessionId = ''
 try { if ($script:Ui.pinned) { $script:PinnedSessionId = [string]$script:Ui.pinned } } catch { }
@@ -153,7 +155,25 @@ function Find-Name([string]$name) { return $script:Window.FindName($name) }
 $script:Root = Find-Name 'Root'
 $script:BubbleHost = Find-Name 'BubbleHost'
 $script:Bubble = Find-Name 'Bubble'
+$script:BubbleTail = Find-Name 'BubbleTail'
+$script:GlassTint = Find-Name 'GlassTint'
+$script:BubbleContent = Find-Name 'BubbleContent'
 $script:BubbleSlide = Find-Name 'BubbleSlide'
+$script:BubbleBrushDefault = $script:Bubble.Background
+$script:BubbleBorderDefault = $script:Bubble.BorderBrush
+$script:BubbleTailDefault = if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill } else { $null }
+$script:GlassBrush = $null
+$script:GlassRect = ''
+$script:GlassBusy = $false
+try {
+  Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class DshFishGdi {
+  [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr hObject);
+}
+"@
+} catch { }
 $script:TitleText = Find-Name 'TitleText'
 $script:CountText = Find-Name 'CountText'
 $script:TaskText = Find-Name 'TaskText'
@@ -436,7 +456,11 @@ function Save-WindowPos {
     $script:Ui | Add-Member -NotePropertyName scale -NotePropertyValue ([double]$script:Scale) -Force
     $script:Ui | Add-Member -NotePropertyName notify -NotePropertyValue ([bool]$script:NotifyOn) -Force
     $script:Ui | Add-Member -NotePropertyName topmost -NotePropertyValue ([bool]$script:Topmost) -Force
+    $script:Ui | Add-Member -NotePropertyName material -NotePropertyValue ([string]$script:Material) -Force
     Save-JsonFile $script:UiPath $script:Ui
+    if ($script:Material -eq 'liquid' -and $null -ne $script:GlassTimer) {
+      $script:GlassTimer.Stop(); $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(420); $script:GlassTimer.Start()
+    }
   } catch { }
 }
 
@@ -1095,11 +1119,184 @@ function Add-SettingsMenu {
   [void]$script:Menu.Items.Add($set)
 }
 
+$script:GlassBorder = New-Object Windows.Media.LinearGradientBrush
+$script:GlassBorder.StartPoint = New-Object Windows.Point(0, 0)
+$script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(190, 210, 222, 246))
+$script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
+$script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
+$script:GlassTextShadow.BlurRadius = 4
+$script:GlassTextShadow.ShadowDepth = 0
+$script:GlassTextShadow.Opacity = 0.5
+$script:GlassFallback = New-Object Windows.Media.LinearGradientBrush
+$script:GlassFallback.StartPoint = New-Object Windows.Point(0, 0)
+$script:GlassFallback.EndPoint = New-Object Windows.Point(0.35, 1)
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0))
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(80, 16, 26, 48)), 0.4))
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(150, 16, 26, 48)), 1))
+
+function Get-BubbleRect {
+  if ($null -eq $script:Bubble -or -not $script:Window.IsVisible) {
+    return ''
+  }
+  try {
+    $dpi = [Windows.Media.VisualTreeHelper]::GetDpi($script:Bubble)
+    $pt = $script:Bubble.PointToScreen([Windows.Point]::new(0, 0))
+    $w = [int]($script:Bubble.ActualWidth * $dpi.DpiScaleX)
+    $h = [int]($script:Bubble.ActualHeight * $dpi.DpiScaleY)
+    if ($w -lt 20 -or $h -lt 20) { return '' }
+    return ("{0},{1},{2},{3}" -f [int]$pt.X, [int]$pt.Y, $w, $h)
+  } catch { Write-DebugLog ("rect error: " + $_.Exception.Message); return '' }
+}
+
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+public static class DshFishBlur {
+  public static void Blur(Bitmap bmp, int radius, int passes) {
+    int w = bmp.Width, h = bmp.Height;
+    var rect = new Rectangle(0, 0, w, h);
+    var data = bmp.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+    int stride = data.Stride; int len = stride * h;
+    byte[] src = new byte[len]; Marshal.Copy(data.Scan0, src, 0, len);
+    for (int i = 3; i < len; i += 4) { src[i] = 255; }
+    byte[] tmp = new byte[len];
+    for (int p = 0; p < passes; p++) {
+      for (int y = 0; y < h; y++) {
+        int row = y * stride;
+        for (int x = 0; x < w; x++) {
+          int b = 0, g = 0, r = 0, a = 0, n = 0;
+          int x0 = Math.Max(0, x - radius), x1 = Math.Min(w - 1, x + radius);
+          for (int xx = x0; xx <= x1; xx++) { int i = row + xx * 4; b += src[i]; g += src[i+1]; r += src[i+2]; a += src[i+3]; n++; }
+          int o = row + x * 4; tmp[o] = (byte)(b/n); tmp[o+1] = (byte)(g/n); tmp[o+2] = (byte)(r/n); tmp[o+3] = (byte)(a/n);
+        }
+      }
+      for (int x = 0; x < w; x++) {
+        for (int y = 0; y < h; y++) {
+          int b = 0, g = 0, r = 0, a = 0, n = 0;
+          int y0 = Math.Max(0, y - radius), y1 = Math.Min(h - 1, y + radius);
+          for (int yy = y0; yy <= y1; yy++) { int i = yy * stride + x * 4; b += tmp[i]; g += tmp[i+1]; r += tmp[i+2]; a += tmp[i+3]; n++; }
+          int o = y * stride + x * 4; src[o] = (byte)(b/n); src[o+1] = (byte)(g/n); src[o+2] = (byte)(r/n); src[o+3] = (byte)(a/n);
+        }
+      }
+    }
+    for (int i = 0; i < len; i += 4) {
+      int b = (int)((src[i] - 128) * 1.12) + 140;
+      int g = (int)((src[i+1] - 128) * 1.12) + 141;
+      int r = (int)((src[i+2] - 128) * 1.12) + 138;
+      src[i] = (byte)Math.Min(255, Math.Max(0, b));
+      src[i+1] = (byte)Math.Min(255, Math.Max(0, g));
+      src[i+2] = (byte)Math.Min(255, Math.Max(0, r));
+    }
+    Marshal.Copy(src, 0, data.Scan0, len);
+    bmp.UnlockBits(data);
+  }
+}
+"@ -ReferencedAssemblies 'System.Drawing'
+} catch { Write-DebugLog ("glass blur type failed: " + $_.Exception.Message) }
+
+function Capture-Glass {
+  $rect = Get-BubbleRect
+  $menuOpen = ($null -ne $script:Menu -and $script:Menu.Visible)
+  if ($script:GlassBusy) { return }
+  if ($menuOpen) {
+    $script:GlassTimer.Stop(); $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(300); $script:GlassTimer.Start()
+    return
+  }
+  if (-not $rect) { return }
+  $script:GlassBusy = $true
+  $bmp = $null
+  $prevVis = $null
+  if ($null -ne $script:BubbleHost) { $prevVis = $script:BubbleHost.Visibility }
+  try {
+    $parts = $rect.Split(',')
+    $x = [int]$parts[0]; $y = [int]$parts[1]; $w = [int]$parts[2]; $h = [int]$parts[3]
+    $pad = 10
+    $cw = $w + $pad * 2; $ch = $h + $pad * 2
+    if ($null -ne $script:BubbleHost) { $script:BubbleHost.Visibility = [Windows.Visibility]::Collapsed }
+    Start-Sleep -Milliseconds 120
+    $bmp = New-Object System.Drawing.Bitmap($cw, $ch)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen(($x - $pad), ($y - $pad), 0, 0, $bmp.Size)
+    $g.Dispose()
+    $script:Window.Show()
+    [DshFishBlur]::Blur($bmp, 8, 3)
+    $hbm = $bmp.GetHbitmap()
+    $src = [Windows.Interop.Imaging]::CreateBitmapSourceFromHBitmap($hbm, [IntPtr]::Zero, [Windows.Int32Rect]::Empty, [Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions())
+    try { [DshFishGdi]::DeleteObject($hbm) | Out-Null } catch { }
+    $brush = New-Object Windows.Media.ImageBrush
+    $brush.ImageSource = $src
+    $brush.Stretch = 'Fill'
+    $script:GlassBrush = $brush
+    $script:GlassRect = $rect
+    Write-DebugLog ("glass capture " + $rect)
+  } catch {
+    Write-DebugLog ("glass capture failed: " + $_.Exception.Message)
+  } finally {
+    if ($null -ne $bmp) { try { $bmp.Dispose() } catch { } }
+    if ($null -ne $script:BubbleHost -and $null -ne $prevVis) { try { $script:BubbleHost.Visibility = $prevVis } catch { } }
+    $script:GlassBusy = $false
+  }
+}
+
+function Apply-Material {
+  if ($null -eq $script:Bubble -or $null -eq $script:GlassTint) { return }
+  if ($script:Material -eq 'liquid') {
+    $rect = Get-BubbleRect
+    if ($null -eq $script:GlassBrush -or ($rect -and $script:GlassRect -ne $rect)) {
+      Capture-Glass
+    }
+    if ($null -ne $script:GlassBrush) { $script:Bubble.Background = $script:GlassBrush }
+    else { $script:Bubble.Background = $script:GlassFallback }
+    $script:Bubble.BorderBrush = $script:GlassBorder
+    if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:GlassTail }
+    $script:GlassTint.Visibility = [Windows.Visibility]::Visible
+    if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $script:GlassTextShadow }
+  } else {
+    $script:Bubble.Background = $script:BubbleBrushDefault
+    $script:Bubble.BorderBrush = $script:BubbleBorderDefault
+    if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:BubbleTailDefault }
+    $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
+    if ($null -ne $script:BubbleContent) { $script:BubbleContent.Effect = $null }
+  }
+}
+
+$script:GlassTimer = New-Object Windows.Threading.DispatcherTimer
+$script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(420)
+$script:GlassTimer.Add_Tick({
+  $script:GlassTimer.Stop()
+  Apply-Material
+})
+
+$script:Window.Add_IsVisibleChanged({
+  if ($script:Window.IsVisible -and $script:Material -eq 'liquid' -and $null -ne $script:GlassTimer -and -not $script:GlassBusy) {
+    $script:GlassTimer.Stop(); $script:GlassTimer.Start()
+  }
+})
+
+if ($null -ne $script:Bubble) {
+  $script:Bubble.Add_SizeChanged({
+    if ($script:Material -eq 'liquid' -and $null -ne $script:GlassTimer -and -not $script:GlassBusy) {
+      $script:GlassTimer.Stop(); $script:GlassTimer.Start()
+    }
+  })
+}
+
 function Show-ContextMenu {
   $script:Menu.Items.Clear()
   [void](Add-ContextItem '打开 DSH' { Open-Dsh })
   [void](Add-ContextItem '摸摸头' { Pet-Mascot })
   try { Add-SizeRow } catch { Write-DebugLog ("Add-SizeRow failed: " + $_.Exception.Message) }
+  if ($script:Mascot -eq 'chibi') {
+    $matLabel = if ($script:Material -eq 'liquid') { '材质：液态玻璃' } else { '材质：默认' }
+    [void](Add-ContextItem $matLabel { Toggle-Material })
+  }
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   if ($script:PinnedSessionId) { [void](Add-ContextItem '会话：自动（最近任务）' { Set-Pin '' }) }
   else { [void](Add-ContextItem '✓ 会话：自动（最近任务）' { Set-Pin '' }) }
@@ -1130,6 +1327,17 @@ function Show-ContextMenu {
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
   [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
   try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { }
+}
+
+function Toggle-Material {
+  if ($script:Material -eq 'liquid') { $script:Material = 'default' } else { $script:Material = 'liquid' }
+  $script:Ui | Add-Member -NotePropertyName material -NotePropertyValue ([string]$script:Material) -Force
+  Save-WindowPos
+  if ($null -ne $script:GlassTimer) {
+    $script:GlassTimer.Stop()
+    $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(420)
+    $script:GlassTimer.Start()
+  }
 }
 
 function Toggle-Sound {
@@ -1553,6 +1761,11 @@ $script:Window.Add_Loaded({
     $script:TitleText.Text = 'DSH 大肥鱼'
     $script:TaskText.Text = '正在连接 DSH…'
     Show-Bubble
+    if ($script:Material -eq 'liquid' -and $null -ne $script:GlassTimer) {
+      $script:GlassTimer.Stop()
+      $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(900)
+      $script:GlassTimer.Start()
+    }
   } catch { }
 })
 $script:Window.Add_LocationChanged({
