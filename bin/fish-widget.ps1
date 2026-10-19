@@ -536,7 +536,8 @@ function Stop-Celebrate {
 $script:Tray = $null
 function Init-Tray {
   if ($null -ne $script:Tray) { return }
-  if ($null -ne $script:Config -and $script:Config.tray -eq $false) { return }
+  if ($null -ne $script:Config -and $script:Config.tray -eq $false) { Write-DebugLog 'tray disabled by config'; return }
+  Write-DebugLog ("tray init: icon exists=" + (Test-Path -LiteralPath $script:IconPath))
   try {
     $script:Tray = New-Object System.Windows.Forms.NotifyIcon
     if (Test-Path -LiteralPath $script:IconPath) {
@@ -569,6 +570,8 @@ function Init-Tray {
     })
     $miDetail = $menu.Items.Add('显示 / 隐藏详情')
     $miDetail.Add_Click({ Toggle-Collapsed })
+    $miPinTray = $menu.Items.Add('把图标固定到任务栏…')
+    $miPinTray.Add_Click({ Open-TraySettings })
     $miSound = $menu.Items.Add('提醒音')
     $miSound.Add_Click({
       $script:SoundOn = -not $script:SoundOn
@@ -585,7 +588,8 @@ function Init-Tray {
     $script:Tray.ContextMenuStrip = $menu
 
     $script:Tray.Add_BalloonTipClicked({ Open-Dsh })
-  } catch { }
+    Write-DebugLog ("tray visible=" + $script:Tray.Visible + " text=" + $script:Tray.Text)
+  } catch { Write-DebugLog ("tray init failed: " + $_.Exception.Message) }
 }
 
 function Notify-Completion([string]$title, [string]$body) {
@@ -915,6 +919,13 @@ $script:Menu.Add_Closed({
   }
 })
 
+function Open-TraySettings {
+  try { Start-Process 'ms-settings:taskbar' | Out-Null } catch { }
+  try {
+    [void][System.Windows.MessageBox]::Show("Windows 设置已打开。`n`n请进入：个性化 → 任务栏 → 其他系统托盘图标，`n找到带蓝色鲸鱼娘图标的「Windows PowerShell」，把它打开，`n图标就会常驻在右下角。", 'DSH 小鱼')
+  } catch { }
+}
+
 function Show-ContextMenu {
   $script:Menu.Items.Clear()
   [void](Add-ContextItem '打开 DSH' { Open-Dsh })
@@ -942,6 +953,7 @@ function Show-ContextMenu {
   [void](Add-ContextItem '显示 / 隐藏详情' { Toggle-Collapsed })
   if ($script:SoundOn) { [void](Add-ContextItem '提醒音：开' { Toggle-Sound }) }
   else { [void](Add-ContextItem '提醒音：关' { Toggle-Sound }) }
+  [void](Add-ContextItem '把图标固定到任务栏…' { Open-TraySettings })
   [void](Add-ContextItem '重置位置' { Reset-Position })
   [void](Add-ContextItem '打开说明' { try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
