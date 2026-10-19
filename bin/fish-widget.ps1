@@ -812,10 +812,146 @@ function End-Drag($sender, $e) {
   if ($script:ClickTimer.IsEnabled) {
     # 240ms 内的第二次点击 = 双击
     $script:ClickTimer.Stop()
-    Open-Dsh
+    Show-Balance
     return
   }
   $script:ClickTimer.Start()
+}
+
+# ── DeepSeek 余额 ────────────────────────────────────────────────────────
+$script:BalanceShowing = $false
+$script:BalanceBusy = $false
+$script:BalanceJob = $null
+$script:BalanceStarted = [DateTime]::Now
+
+$script:BalancePoll = New-Object System.Windows.Threading.DispatcherTimer
+$script:BalancePoll.Interval = [TimeSpan]::FromMilliseconds(250)
+$script:BalancePoll.Add_Tick({ Update-BalanceJob })
+
+$script:BalanceRestore = New-Object System.Windows.Threading.DispatcherTimer
+$script:BalanceRestore.Interval = [TimeSpan]::FromSeconds(10)
+$script:BalanceRestore.Add_Tick({
+  $script:BalanceRestore.Stop()
+  $script:BalanceShowing = $false
+})
+
+function Get-DeepSeekKey {
+  $k = [string]$env:DEEPSEEK_API_KEY
+  if ($k) { return $k.Trim() }
+  $paths = New-Object System.Collections.ArrayList
+  if ($env:DSH_HOME) { [void]$paths.Add((Join-Path $env:DSH_HOME '.credentials.yaml')) }
+  if ($env:USERPROFILE) { [void]$paths.Add((Join-Path $env:USERPROFILE '.dsh\.credentials.yaml')) }
+  foreach ($cred in $paths) {
+    try {
+      if (-not (Test-Path -LiteralPath $cred)) {
+        continue
+      }
+      $m = Select-String -LiteralPath $cred -Pattern '^\s*DEEPSEEK_API_KEY:\s*(\S+)' | Select-Object -First 1
+      if ($m) {
+        $v = $m.Matches[0].Groups[1].Value.Trim()
+        $v = $v.Trim('"').Trim("'")
+        if ($v) { return $v }
+      }
+    } catch {
+    }
+  }
+  return ''
+}
+
+function Set-BalanceBubble([string]$text, [string]$meta, [string]$dot) {
+  $script:BalanceShowing = $true
+  $script:TitleText.Text = 'DeepSeek 余额'
+  $script:TaskText.Text = $text
+  $script:MetaText.Text = $meta
+  $script:CountText.Text = ''
+  $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
+  Set-Compact $false
+  Set-DotColor $dot
+  Set-BubbleVisible $true
+  try {
+    $script:BalanceRestore.Stop()
+    $script:BalanceRestore.Start()
+  } catch { }
+}
+
+function Show-Balance {
+  if ($script:BalanceBusy) { return }
+  $key = Get-DeepSeekKey
+  if (-not $key) {
+    Set-BalanceBubble '未找到 API Key' '在 DSH 凭据中配置 DEEPSEEK_API_KEY' '#FF6B6B'
+    return
+  }
+  $script:BalanceBusy = $true
+  Set-BalanceBubble '查询中…' '正在连接 DeepSeek' '#7C93FF'
+  try {
+    $script:BalanceStarted = [DateTime]::Now
+    $script:BalanceJob = Start-Job -ScriptBlock {
+      param($apiKey)
+      try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $r = Invoke-RestMethod -Uri 'https://api.deepseek.com/user/balance' -Headers @{ Authorization = ('Bearer ' + $apiKey); Accept = 'application/json' } -TimeoutSec 12
+        return ($r | ConvertTo-Json -Depth 6 -Compress)
+      } catch {
+        return ('ERR:' + $_.Exception.Message)
+      }
+    } -ArgumentList $key
+    $script:BalancePoll.Start()
+  } catch {
+    $script:BalanceBusy = $false
+    Set-BalanceBubble ('查询失败：' + $_.Exception.Message) '双击重试' '#FF6B6B'
+  }
+}
+
+function Update-BalanceJob {
+  if ($null -eq $script:BalanceJob) {
+    try { $script:BalancePoll.Stop() } catch { }
+    return
+  }
+  $state = [string]$script:BalanceJob.State
+  if ($state -eq 'Running' -or $state -eq 'NotStarted') {
+    if (([DateTime]::Now - $script:BalanceStarted).TotalSeconds -gt 20) {
+      try { Stop-Job -Job $script:BalanceJob -ErrorAction SilentlyContinue } catch { }
+      try { Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } catch { }
+      $script:BalanceJob = $null
+      $script:BalanceBusy = $false
+      try { $script:BalancePoll.Stop() } catch { }
+      Set-BalanceBubble '查询超时' '双击重试' '#FF6B6B'
+    }
+    return
+  }
+  $out = ''
+  try {
+    $out = (@(Receive-Job -Job $script:BalanceJob -ErrorAction Stop) | Where-Object { $_ -is [string] } | Select-Object -Last 1)
+  } catch {
+    $out = 'ERR:' + $_.Exception.Message
+  }
+  try { Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } catch { }
+  $script:BalanceJob = $null
+  $script:BalanceBusy = $false
+  try { $script:BalancePoll.Stop() } catch { }
+  if (-not $out) { $out = 'ERR:空响应' }
+  if ($out -like 'ERR:*') {
+    $msg = $out.Substring(4).Trim()
+    if ($msg.Length -gt 60) { $msg = $msg.Substring(0, 60) + '…' }
+    Set-BalanceBubble ('查询失败：' + $msg) '双击重试' '#FF6B6B'
+    return
+  }
+  try {
+    $data = $out | ConvertFrom-Json
+    $parts = @()
+    foreach ($b in @($data.balance_infos)) {
+      $cur = [string]$b.currency
+      $sym = if ($cur -eq 'CNY') { '¥' } elseif ($cur -eq 'USD') { '$' } else { $cur + ' ' }
+      $parts += ($sym + [string]$b.total_balance)
+    }
+    $text = if ($parts.Count -gt 0) { $parts -join '  ·  ' } else { '暂无余额信息' }
+    $ok = ($data.is_available -eq $true)
+    $meta = if ($ok) { '可用 · 双击刷新' } else { '不可用 · 双击刷新' }
+    $dot = if ($ok) { '#3DDC97' } else { '#FF6B6B' }
+    Set-BalanceBubble $text $meta $dot
+  } catch {
+    Set-BalanceBubble '解析余额失败' '双击重试' '#FF6B6B'
+  }
 }
 
 function Toggle-Collapsed {
@@ -1454,6 +1590,7 @@ function Set-BubbleVisible([bool]$visible) {
 }
 
 function Render-Idle {
+  if ($script:BalanceShowing) { return }
   $script:LastSignature = ''
   Toggle-Bubbles $false
   Toggle-DotPulse $false
@@ -1475,12 +1612,13 @@ function Render-Idle {
     $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
     Set-Compact $false
     $script:TaskText.Text = '待命中，有任务就交给我吧～'
-    $script:MetaText.Text = '双击我打开 DSH'
+    $script:MetaText.Text = '双击看 DeepSeek 余额'
   }
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 待命中' }
 }
 
 function Render-Working($session, [double]$now) {
+  if ($script:BalanceShowing) { return }
   $script:IdleSince = $null
   Toggle-Bubbles $true
   Toggle-DotPulse $true
@@ -1556,6 +1694,7 @@ function Render-Working($session, [double]$now) {
 }
 
 function Render-Done($session, $lastTurn) {
+  if ($script:BalanceShowing) { return }
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Set-Mouth $false
@@ -1580,12 +1719,13 @@ function Render-Done($session, $lastTurn) {
   }
   $script:TaskText.Text = $title
   $dur = if ($null -ne $lastTurn) { [double](Get-Prop $lastTurn 'durationMs') } else { 0 }
-  $script:MetaText.Text = '用时 ' + (Format-Duration $dur) + ' · 双击打开 DSH'
+  $script:MetaText.Text = '用时 ' + (Format-Duration $dur) + ' · 双击看余额'
   Set-Compact $false
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 任务完成' }
 }
 
 function Render-Error($session, $lastTurn) {
+  if ($script:BalanceShowing) { return }
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Stop-Celebrate
@@ -1602,12 +1742,13 @@ function Render-Error($session, $lastTurn) {
   if (-not $err) { $err = '任务执行失败' }
   if ($err.Length -gt 60) { $err = $err.Substring(0, 59) + '…' }
   $script:TaskText.Text = $err
-  $script:MetaText.Text = '双击打开 DSH 查看详情'
+  $script:MetaText.Text = '双击查看 DeepSeek 余额'
   Set-Compact $false
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 出错了' }
 }
 
 function Render-Aborted($session, $lastTurn) {
+  if ($script:BalanceShowing) { return }
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Stop-Celebrate
@@ -1782,6 +1923,9 @@ $script:Window.Add_Closing({
   try { $script:Tick.Stop() } catch { }
   try { $script:BlinkTimer.Stop() } catch { }
   try { $script:FrameTimer.Stop() } catch { }
+  try { $script:BalancePoll.Stop() } catch { }
+  try { $script:BalanceRestore.Stop() } catch { }
+  try { if ($null -ne $script:BalanceJob) { Stop-Job -Job $script:BalanceJob -ErrorAction SilentlyContinue; Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } } catch { }
 })
 
 Write-DebugLog 'widget starting'
