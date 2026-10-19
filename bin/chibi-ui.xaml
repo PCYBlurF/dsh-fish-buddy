@@ -105,10 +105,10 @@
           <Rectangle x:Name="GlassTint" Visibility="Collapsed" RadiusX="20" RadiusY="20">
             <Rectangle.Fill>
               <LinearGradientBrush StartPoint="0,0" EndPoint="0.35,1">
-                <GradientStop Color="#4DFFFFFF" Offset="0"/>
-                <GradientStop Color="#1FFFFFFF" Offset="0.2"/>
-                <GradientStop Color="#260E1A33" Offset="0.55"/>
-                <GradientStop Color="#4D0E1A33" Offset="1"/>
+                <GradientStop Color="#33FFFFFF" Offset="0"/>
+                <GradientStop Color="#1AFFFFFF" Offset="0.2"/>
+                <GradientStop Color="#590B0D14" Offset="0.55"/>
+                <GradientStop Color="#8C0B0D14" Offset="1"/>
               </LinearGradientBrush>
             </Rectangle.Fill>
           </Rectangle>
