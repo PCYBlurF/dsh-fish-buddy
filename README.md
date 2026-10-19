@@ -113,7 +113,7 @@ stop-fish.cmd    :: 停止
 
 - **默认**：深色渐变气泡。
 - **液态玻璃**：抓取气泡背后的桌面区域，做高斯模糊、提亮和冷色高光，再叠加白色描边和半透明玻璃层。
-- 移动、缩放、重新显示或切换材质后会重新抓取；抓取时气泡会隐藏约 0.1 秒。
+- 启动或切换材质时截取一次全屏背景（角色和气泡会短暂隐藏约 0.15 秒）；拖动/缩放时只移动裁切区域，玻璃里的桌面会跟着位置变化，不会每帧重截。
 - 选择保存在 `ui.json` 的 `material`。
 
 WPF 没有 CSS 的 `backdrop-filter`，所以用「截屏 + 软件模糊 + 高光层」实现；视觉参考 [WXperia/liquid-glass-vue](https://github.com/WXperia/liquid-glass-vue)（MIT），详见 `THIRD_PARTY_NOTICES.md`。

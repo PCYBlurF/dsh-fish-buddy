@@ -166,8 +166,11 @@ $script:CountColorDefault = $script:CountText.Foreground
 $script:MetaColorDefault = $script:MetaText.Foreground
 $script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 213, 224, 255))
 $script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
-$script:GlassBrush = $null
-$script:GlassRect = ''
+$script:GlassSnapshot = $null
+$script:GlassImageBrush = $null
+$script:GlassOriginX = 0
+$script:GlassOriginY = 0
+$script:GlassScale = 1.0
 $script:GlassBusy = $false
 try {
   Add-Type @"
@@ -462,9 +465,6 @@ function Save-WindowPos {
     $script:Ui | Add-Member -NotePropertyName topmost -NotePropertyValue ([bool]$script:Topmost) -Force
     $script:Ui | Add-Member -NotePropertyName material -NotePropertyValue ([string]$script:Material) -Force
     Save-JsonFile $script:UiPath $script:Ui
-    if ($script:Material -eq 'liquid' -and $null -ne $script:GlassTimer) {
-      $script:GlassTimer.Stop(); $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(420); $script:GlassTimer.Start()
-    }
   } catch { }
 }
 
@@ -1191,9 +1191,9 @@ public static class DshFishBlur {
       }
     }
     for (int i = 0; i < len; i += 4) {
-      int b = (int)((src[i] - 128) * 1.12) + 140;
-      int g = (int)((src[i+1] - 128) * 1.12) + 141;
-      int r = (int)((src[i+2] - 128) * 1.12) + 138;
+      int b = (int)((src[i] - 128) * 1.10) + 138;
+      int g = (int)((src[i+1] - 128) * 1.10) + 139;
+      int r = (int)((src[i+2] - 128) * 1.10) + 136;
       src[i] = (byte)Math.Min(255, Math.Max(0, b));
       src[i+1] = (byte)Math.Min(255, Math.Max(0, g));
       src[i+2] = (byte)Math.Min(255, Math.Max(0, r));
@@ -1205,46 +1205,115 @@ public static class DshFishBlur {
 "@ -ReferencedAssemblies 'System.Drawing'
 } catch { Write-DebugLog ("glass blur type failed: " + $_.Exception.Message) }
 
-function Capture-Glass {
+$script:GlassBorder = New-Object Windows.Media.LinearGradientBrush
+$script:GlassBorder.StartPoint = New-Object Windows.Point(0, 0)
+$script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
+[void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(190, 210, 222, 246))
+$script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
+$script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
+$script:GlassTextShadow.BlurRadius = 4
+$script:GlassTextShadow.ShadowDepth = 0
+$script:GlassTextShadow.Opacity = 0.6
+$script:GlassFallback = New-Object Windows.Media.LinearGradientBrush
+$script:GlassFallback.StartPoint = New-Object Windows.Point(0, 0)
+$script:GlassFallback.EndPoint = New-Object Windows.Point(0.35, 1)
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0))
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(80, 16, 26, 48)), 0.4))
+[void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(150, 16, 26, 48)), 1))
+$script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 213, 224, 255))
+$script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
+
+function Get-BubbleRect {
+  if ($null -eq $script:Bubble -or -not $script:Window.IsVisible) { return '' }
+  try {
+    $dpi = [Windows.Media.VisualTreeHelper]::GetDpi($script:Bubble)
+    $pt = $script:Bubble.PointToScreen([Windows.Point]::new(0, 0))
+    $w = [int]($script:Bubble.ActualWidth * $dpi.DpiScaleX)
+    $h = [int]($script:Bubble.ActualHeight * $dpi.DpiScaleY)
+    if ($w -lt 20 -or $h -lt 20) { return '' }
+    return ("{0},{1},{2},{3}" -f [int]$pt.X, [int]$pt.Y, $w, $h)
+  } catch { return '' }
+}
+
+function Update-GlassView {
+  if ($script:Material -ne 'liquid' -or $null -eq $script:GlassSnapshot -or $null -eq $script:GlassImageBrush) { return }
   $rect = Get-BubbleRect
-  $menuOpen = ($null -ne $script:Menu -and $script:Menu.Visible)
+  if (-not $rect) { return }
+  $p = $rect.Split(',')
+  $x = [double]$p[0]; $y = [double]$p[1]; $w = [double]$p[2]; $h = [double]$p[3]
+  $vx = ($x - $script:GlassOriginX) / $script:GlassScale
+  $vy = ($y - $script:GlassOriginY) / $script:GlassScale
+  $vw = $w / $script:GlassScale
+  $vh = $h / $script:GlassScale
+  $iw = [double]$script:GlassSnapshot.PixelWidth
+  $ih = [double]$script:GlassSnapshot.PixelHeight
+  if ($vx -lt 0) { $vw += $vx; $vx = 0 }
+  if ($vy -lt 0) { $vh += $vy; $vy = 0 }
+  if (($vx + $vw) -gt $iw) { $vw = $iw - $vx }
+  if (($vy + $vh) -gt $ih) { $vh = $ih - $vy }
+  if ($vw -le 2 -or $vh -le 2) { return }
+  if ($script:GlassImageBrush.IsFrozen) {
+    $nb = $script:GlassImageBrush.Clone()
+    $nb.ImageSource = $script:GlassSnapshot
+    $script:GlassImageBrush = $nb
+  }
+  $script:GlassImageBrush.Viewbox = New-Object Windows.Rect($vx, $vy, $vw, $vh)
+  if (-not [object]::ReferenceEquals($script:Bubble.Background, $script:GlassImageBrush)) {
+    $script:Bubble.Background = $script:GlassImageBrush
+  }
+}
+
+function Capture-Glass {
   if ($script:GlassBusy) { return }
-  if ($menuOpen) {
+  if ($null -ne $script:Menu -and $script:Menu.Visible) {
     $script:GlassTimer.Stop(); $script:GlassTimer.Interval = [TimeSpan]::FromMilliseconds(300); $script:GlassTimer.Start()
     return
   }
-  if (-not $rect) { return }
   $script:GlassBusy = $true
-  $bmp = $null
-  $prevVis = $null
-  if ($null -ne $script:BubbleHost) { $prevVis = $script:BubbleHost.Visibility }
+  $full = $null; $small = $null
+  $prevFish = $null; $prevBubble = $null
   try {
-    $parts = $rect.Split(',')
-    $x = [int]$parts[0]; $y = [int]$parts[1]; $w = [int]$parts[2]; $h = [int]$parts[3]
-    $pad = 10
-    $cw = $w + $pad * 2; $ch = $h + $pad * 2
-    if ($null -ne $script:BubbleHost) { $script:BubbleHost.Visibility = [Windows.Visibility]::Collapsed }
-    Start-Sleep -Milliseconds 120
-    $bmp = New-Object System.Drawing.Bitmap($cw, $ch)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen(($x - $pad), ($y - $pad), 0, 0, $bmp.Size)
+    if ($null -ne $script:FishHost) { $prevFish = $script:FishHost.Visibility; $script:FishHost.Visibility = [Windows.Visibility]::Collapsed }
+    if ($null -ne $script:BubbleHost) { $prevBubble = $script:BubbleHost.Visibility; $script:BubbleHost.Visibility = [Windows.Visibility]::Collapsed }
+    Start-Sleep -Milliseconds 150
+    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $full = New-Object System.Drawing.Bitmap($vs.Width, $vs.Height)
+    $g = [System.Drawing.Graphics]::FromImage($full)
+    $g.CopyFromScreen($vs.X, $vs.Y, 0, 0, $full.Size)
     $g.Dispose()
-    $script:Window.Show()
-    [DshFishBlur]::Blur($bmp, 8, 3)
-    $hbm = $bmp.GetHbitmap()
+    if ($null -ne $script:FishHost -and $null -ne $prevFish) { $script:FishHost.Visibility = $prevFish }
+    if ($null -ne $script:BubbleHost -and $null -ne $prevBubble) { $script:BubbleHost.Visibility = $prevBubble }
+    $sw = [int]($vs.Width / 2); $sh = [int]($vs.Height / 2)
+    $small = New-Object System.Drawing.Bitmap($sw, $sh)
+    $g2 = [System.Drawing.Graphics]::FromImage($small)
+    $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g2.DrawImage($full, 0, 0, $sw, $sh)
+    $g2.Dispose()
+    [DshFishBlur]::Blur($small, 5, 2)
+    $hbm = $small.GetHbitmap()
     $src = [Windows.Interop.Imaging]::CreateBitmapSourceFromHBitmap($hbm, [IntPtr]::Zero, [Windows.Int32Rect]::Empty, [Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions())
     try { [DshFishGdi]::DeleteObject($hbm) | Out-Null } catch { }
+    $script:GlassSnapshot = $src
+    $script:GlassOriginX = $vs.X
+    $script:GlassOriginY = $vs.Y
+    $script:GlassScale = $vs.Width / $sw
     $brush = New-Object Windows.Media.ImageBrush
     $brush.ImageSource = $src
     $brush.Stretch = 'Fill'
-    $script:GlassBrush = $brush
-    $script:GlassRect = $rect
-    Write-DebugLog ("glass capture " + $rect)
+    $brush.ViewboxUnits = 'Absolute'
+    $script:GlassImageBrush = $brush
+    Update-GlassView
+    Write-DebugLog ("glass snapshot " + $vs.Width + "x" + $vs.Height)
   } catch {
     Write-DebugLog ("glass capture failed: " + $_.Exception.Message)
   } finally {
-    if ($null -ne $bmp) { try { $bmp.Dispose() } catch { } }
-    if ($null -ne $script:BubbleHost -and $null -ne $prevVis) { try { $script:BubbleHost.Visibility = $prevVis } catch { } }
+    if ($null -ne $script:FishHost -and $null -ne $prevFish) { try { $script:FishHost.Visibility = $prevFish } catch { } }
+    if ($null -ne $script:BubbleHost -and $null -ne $prevBubble) { try { $script:BubbleHost.Visibility = $prevBubble } catch { } }
+    if ($null -ne $full) { try { $full.Dispose() } catch { } }
+    if ($null -ne $small) { try { $small.Dispose() } catch { } }
     $script:GlassBusy = $false
   }
 }
@@ -1252,11 +1321,9 @@ function Capture-Glass {
 function Apply-Material {
   if ($null -eq $script:Bubble -or $null -eq $script:GlassTint) { return }
   if ($script:Material -eq 'liquid') {
-    $rect = Get-BubbleRect
-    if ($null -eq $script:GlassBrush -or ($rect -and $script:GlassRect -ne $rect)) {
-      Capture-Glass
-    }
-    if ($null -ne $script:GlassBrush) { $script:Bubble.Background = $script:GlassBrush }
+    if ($null -eq $script:GlassSnapshot) { Capture-Glass }
+    Update-GlassView
+    if ($null -ne $script:GlassSnapshot) { $script:Bubble.Background = $script:GlassImageBrush }
     else { $script:Bubble.Background = $script:GlassFallback }
     $script:Bubble.BorderBrush = $script:GlassBorder
     if ($null -ne $script:BubbleTail) { $script:BubbleTail.Fill = $script:GlassTail }
@@ -1283,16 +1350,12 @@ $script:GlassTimer.Add_Tick({
 })
 
 $script:Window.Add_IsVisibleChanged({
-  if ($script:Window.IsVisible -and $script:Material -eq 'liquid' -and $null -ne $script:GlassTimer -and -not $script:GlassBusy) {
-    $script:GlassTimer.Stop(); $script:GlassTimer.Start()
-  }
+  if ($script:Material -eq 'liquid' -and -not $script:GlassBusy) { Update-GlassView }
 })
 
 if ($null -ne $script:Bubble) {
   $script:Bubble.Add_SizeChanged({
-    if ($script:Material -eq 'liquid' -and $null -ne $script:GlassTimer -and -not $script:GlassBusy) {
-      $script:GlassTimer.Stop(); $script:GlassTimer.Start()
-    }
+    if ($script:Material -eq 'liquid') { Update-GlassView }
   })
 }
 
@@ -1339,6 +1402,7 @@ function Show-ContextMenu {
 
 function Toggle-Material {
   if ($script:Material -eq 'liquid') { $script:Material = 'default' } else { $script:Material = 'liquid' }
+  if ($script:Material -eq 'liquid') { $script:GlassSnapshot = $null }
   $script:Ui | Add-Member -NotePropertyName material -NotePropertyValue ([string]$script:Material) -Force
   Save-WindowPos
   if ($null -ne $script:GlassTimer) {
@@ -1777,6 +1841,7 @@ $script:Window.Add_Loaded({
   } catch { }
 })
 $script:Window.Add_LocationChanged({
+  if ($script:Material -eq 'liquid') { Update-GlassView }
   # 拖动结束保存位置；用节流避免频繁写盘
   if ($null -eq $script:Drag) { Save-WindowPos }
 })
