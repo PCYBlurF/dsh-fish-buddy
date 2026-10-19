@@ -172,7 +172,7 @@ if ($null -ne $script:GlassNoise) {
       $noiseBrush = New-Object Windows.Media.ImageBrush
       $noiseBrush.ImageSource = $noiseImg
       $noiseBrush.TileMode = 'Tile'
-      $noiseBrush.Viewport = New-Object Windows.Rect(0, 0, 110, 110)
+      $noiseBrush.Viewport = New-Object Windows.Rect(0, 0, 128, 128)
       $noiseBrush.ViewportUnits = 'Absolute'
       $noiseBrush.Stretch = 'Fill'
       $script:GlassNoise.Fill = $noiseBrush

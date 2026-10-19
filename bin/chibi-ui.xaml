@@ -112,7 +112,7 @@
               </LinearGradientBrush>
             </Rectangle.Fill>
           </Rectangle>
-          <Rectangle x:Name="GlassNoise" Visibility="Collapsed" IsHitTestVisible="False" Opacity="0.7" RadiusX="20" RadiusY="20"/>
+          <Rectangle x:Name="GlassNoise" Visibility="Collapsed" IsHitTestVisible="False" Opacity="0.85" RadiusX="20" RadiusY="20"/>
           <StackPanel x:Name="BubbleContent">
           <DockPanel LastChildFill="True">
             <Grid DockPanel.Dock="Left" Width="10" Height="10" Margin="0,0,9,0" VerticalAlignment="Center">
