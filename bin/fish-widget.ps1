@@ -1019,6 +1019,10 @@ function Open-AppDir {
   try { Start-Process -FilePath $script:AppDir | Out-Null } catch { }
 }
 
+function Open-ConfigFile {
+  try { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $script:ConfigPath + '"') | Out-Null } catch { }
+}
+
 function Check-Update {
   $title = 'DSH 大肥鱼 · 检查更新'
   try {
@@ -1084,6 +1088,7 @@ function Add-SettingsMenu {
   [void](Add-SubItem $set '重启后端' { Restart-Core })
   [void](Add-SubItem $set '打开日志' { Open-Log })
   [void](Add-SubItem $set '打开安装目录' { Open-AppDir })
+  [void](Add-SubItem $set '打开配置文件' { Open-ConfigFile })
   [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-SubItem $set '检查更新' { Check-Update })
   [void](Add-SubItem $set '关于' { Show-About })
