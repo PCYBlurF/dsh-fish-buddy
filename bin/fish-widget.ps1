@@ -1131,7 +1131,7 @@ $script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
-$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(190, 210, 222, 246))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(170, 230, 234, 242))
 $script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
 $script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
 $script:GlassTextShadow.BlurRadius = 4
@@ -1161,17 +1161,17 @@ function Get-BubbleRect {
 $script:GlassLive = New-Object Windows.Media.LinearGradientBrush
 $script:GlassLive.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassLive.EndPoint = New-Object Windows.Point(0.35, 1)
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(64, 255, 255, 255)), 0))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(38, 255, 255, 255)), 0.2))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(128, 14, 26, 51)), 0.55))
-[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(192, 14, 26, 51)), 1))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(38, 255, 255, 255)), 0))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(20, 255, 255, 255)), 0.2))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(102, 11, 13, 20)), 0.55))
+[void]$script:GlassLive.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(179, 11, 13, 20)), 1))
 $script:GlassBorder = New-Object Windows.Media.LinearGradientBrush
 $script:GlassBorder.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassBorder.EndPoint = New-Object Windows.Point(1, 1)
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
 [void]$script:GlassBorder.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
-$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(190, 210, 222, 246))
+$script:GlassTail = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(170, 230, 234, 242))
 $script:GlassTextShadow = New-Object Windows.Media.Effects.DropShadowEffect
 $script:GlassTextShadow.Color = [Windows.Media.Colors]::Black
 $script:GlassTextShadow.BlurRadius = 4
