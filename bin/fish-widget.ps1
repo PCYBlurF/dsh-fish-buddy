@@ -111,6 +111,7 @@ $script:PinnedSessionId = ''
 try { if ($script:Ui.pinned) { $script:PinnedSessionId = [string]$script:Ui.pinned } } catch { }
 $script:CurrentSessions = @()
 $script:PetUntil = [DateTime]::MinValue
+$script:PendingResize = $false
 $script:DisplayedSession = $null
 $script:DisplayedRunning = $false
 $script:LastReconnectAt = [DateTime]::MinValue
@@ -348,20 +349,32 @@ function Set-MascotVisual([double]$s) {
   }
 }
 
-function Apply-MascotScale([double]$s, [bool]$save) {
-  if ($script:Mascot -eq 'fish') { return }
-  $s = [Math]::Max(0.7, [Math]::Min(1.4, $s))
+function Resize-MascotWindow {
   $oldRight = [double]$script:Window.Left + [double]$script:Window.Width
   $oldBottom = [double]$script:Window.Top + [double]$script:Window.Height
-  $m = Get-MascotSize $s
-  $script:Scale = $s
+  $m = Get-MascotSize $script:Scale
   $script:Window.Width = $m.W
   $script:Window.Height = $m.H
   $script:Window.Left = $oldRight - $m.W
   $script:Window.Top = $oldBottom - $m.H
   $script:Window.Left = [Math]::Max($script:WorkArea.Left, [Math]::Min($script:Window.Left, $script:WorkArea.Right - $m.W))
   $script:Window.Top = [Math]::Max($script:WorkArea.Top, [Math]::Min($script:Window.Top, $script:WorkArea.Bottom - $m.H))
+}
+
+function Apply-MascotScale([double]$s, [bool]$save) {
+  if ($script:Mascot -eq 'fish') { return }
+  $s = [Math]::Max(0.7, [Math]::Min(1.4, $s))
+  $script:Scale = $s
   Set-MascotVisual $s
+  if ($null -ne $script:SizePctButton) {
+    try { $script:SizePctButton.Text = ([int][Math]::Round($s * 100)).ToString() + '%' } catch { }
+  }
+  # 菜单打开时先只缩放画面，等菜单关闭再移动/缩放窗口，避免菜单跟着跳走
+  if ($null -ne $script:Menu -and $script:Menu.Visible) {
+    $script:PendingResize = $true
+    return
+  }
+  Resize-MascotWindow
   if ($save) { Save-WindowPos }
   Write-DebugLog ("mascot scale -> " + [int][Math]::Round($s * 100) + "%")
 }
@@ -540,12 +553,12 @@ function Init-Tray {
     $miOpen.Add_Click({ Open-Dsh })
     $miPet = $menu.Items.Add('摸摸头')
     $miPet.Add_Click({ Pet-Mascot })
+    $miSizeTray = $menu.Items.Add('自定义大小…')
+    $miSizeTray.Add_Click({ Show-SizeInput $null })
     $miBigTray = $menu.Items.Add('放大一点')
     $miBigTray.Add_Click({ Apply-MascotScale ($script:Scale + 0.1) $true })
     $miSmallTray = $menu.Items.Add('缩小一点')
     $miSmallTray.Add_Click({ Apply-MascotScale ($script:Scale - 0.1) $true })
-    $miResetTray = $menu.Items.Add('默认大小')
-    $miResetTray.Add_Click({ Apply-MascotScale 1.0 $true })
     $miToggle = $menu.Items.Add('显示 / 隐藏小鱼')
     $miToggle.Add_Click({
       if ($script:Window.IsVisible) {
@@ -803,16 +816,110 @@ function Add-ContextItem([string]$text, [scriptblock]$action, [bool]$enabled = $
   return $it
 }
 
+function New-DarkButton([string]$text, [int]$w, [scriptblock]$action) {
+  $b = New-Object System.Windows.Forms.Button
+  $b.Text = $text
+  $b.Width = $w
+  $b.Height = 24
+  $b.FlatStyle = 'Flat'
+  $b.UseVisualStyleBackColor = $false
+  $b.BackColor = [System.Drawing.Color]::FromArgb(26, 36, 66)
+  $b.ForeColor = [System.Drawing.Color]::FromArgb(234, 241, 255)
+  $b.FlatAppearance.BorderSize = 1
+  $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 86, 140)
+  $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(52, 72, 118)
+  $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(64, 88, 140)
+  $b.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+  $b.Add_Click($action)
+  return $b
+}
+
+function Show-SizeInput([System.Windows.Forms.Button]$btn) {
+  try {
+    Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
+    $cur = [int][Math]::Round($script:Scale * 100)
+    $value = [Microsoft.VisualBasic.Interaction]::InputBox('输入缩放比例（70 - 140）：', 'DSH 小鱼 · 自定义大小', ([string]$cur))
+    if ([string]::IsNullOrWhiteSpace($value)) { return }
+    $n = 0
+    if (-not [int]::TryParse($value.Trim().TrimEnd('%'), [ref]$n)) { return }
+    Apply-MascotScale ($n / 100.0) $true
+    if ($null -ne $btn) { $btn.Text = ([int][Math]::Round($script:Scale * 100)).ToString() + '%' }
+  } catch { }
+}
+
+function Add-SizeRow {
+  if ($script:Mascot -eq 'fish') {
+    [void](Add-ContextItem '大小：固定（矢量鱼模式）' $null $false)
+    return
+  }
+
+  $panel = New-Object System.Windows.Forms.TableLayoutPanel
+  $panel.ColumnCount = 4
+  $panel.RowCount = 1
+  $panel.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $panel.Padding = New-Object System.Windows.Forms.Padding(8, 3, 8, 3)
+  $panel.Margin = New-Object System.Windows.Forms.Padding(0)
+  $panel.Size = New-Object System.Drawing.Size(224, 34)
+  [void]$panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 56)))
+  [void]$panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 30)))
+  [void]$panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 64)))
+  [void]$panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 30)))
+  [void]$panel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 28)))
+
+  $lbl = New-Object System.Windows.Forms.Label
+  $lbl.Text = '大小：'
+  $lbl.AutoSize = $false
+  $lbl.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+  $lbl.ForeColor = [System.Drawing.Color]::FromArgb(200, 212, 245)
+  $lbl.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  [void]$panel.Controls.Add($lbl, 0, 0)
+
+  $btnMinus = New-DarkButton '－' 30 { Apply-MascotScale ($script:Scale - 0.1) $true }
+  $btnMinus.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $btnMinus.Margin = New-Object System.Windows.Forms.Padding(1, 1, 1, 1)
+  [void]$panel.Controls.Add($btnMinus, 1, 0)
+
+  $btnPct = New-DarkButton ((([int][Math]::Round($script:Scale * 100)).ToString()) + '%') 64 { Show-SizeInput $script:SizePctButton }
+  $btnPct.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $btnPct.Margin = New-Object System.Windows.Forms.Padding(1, 1, 1, 1)
+  $script:SizePctButton = $btnPct
+  [void]$panel.Controls.Add($btnPct, 2, 0)
+
+  $btnPlus = New-DarkButton '＋' 30 { Apply-MascotScale ($script:Scale + 0.1) $true }
+  $btnPlus.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $btnPlus.Margin = New-Object System.Windows.Forms.Padding(1, 1, 1, 1)
+  [void]$panel.Controls.Add($btnPlus, 3, 0)
+
+  try {
+    $rowHost = New-Object System.Windows.Forms.ToolStripControlHost -ArgumentList $panel
+  } catch {
+    Write-DebugLog ("host ctor failed: " + $_.Exception.Message)
+    return
+  }
+  $rowHost.AutoSize = $false
+  $rowHost.Size = New-Object System.Drawing.Size(224, 34)
+  $rowHost.Margin = New-Object System.Windows.Forms.Padding(0)
+  $rowHost.Padding = New-Object System.Windows.Forms.Padding(0)
+  $rowHost.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  [void]$script:Menu.Items.Add($rowHost)
+
+}
+
+$script:Menu.Add_Closed({
+  if ($script:PendingResize) {
+    $script:PendingResize = $false
+    try { Resize-MascotWindow } catch { }
+    Save-WindowPos
+  }
+})
+
 function Show-ContextMenu {
   $script:Menu.Items.Clear()
   [void](Add-ContextItem '打开 DSH' { Open-Dsh })
   [void](Add-ContextItem '摸摸头' { Pet-Mascot })
-  [void](Add-ContextItem ('大小：' + [int][Math]::Round($script:Scale * 100) + '%') $null $false)
-  if ($script:Mascot -ne 'fish') {
-    [void](Add-ContextItem '放大一点' { Apply-MascotScale ($script:Scale + 0.1) $true })
-    [void](Add-ContextItem '缩小一点' { Apply-MascotScale ($script:Scale - 0.1) $true })
-    [void](Add-ContextItem '恢复默认大小' { Apply-MascotScale 1.0 $true })
-  }
+  try { Add-SizeRow } catch { Write-DebugLog ("Add-SizeRow failed: " + $_.Exception.Message) }
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   if ($script:PinnedSessionId) { [void](Add-ContextItem '会话：自动（最近任务）' { Set-Pin '' }) }
   else { [void](Add-ContextItem '✓ 会话：自动（最近任务）' { Set-Pin '' }) }
