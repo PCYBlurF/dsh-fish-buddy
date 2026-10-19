@@ -1554,10 +1554,10 @@ function Show-ContextMenu {
   [void](Add-ContextItem '显示 / 隐藏详情' { Toggle-Collapsed })
   if ($script:SoundOn) { [void](Add-ContextItem '提醒音：开' { Toggle-Sound }) }
   else { [void](Add-ContextItem '提醒音：关' { Toggle-Sound }) }
-  [void](Add-SettingsMenu)
   [void](Add-ContextItem '把图标固定到任务栏…' { Open-TraySettings })
   [void](Add-ContextItem '重置位置' { Reset-Position })
   [void](Add-ContextItem '打开说明' { try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
+  [void](Add-SettingsMenu)
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
   [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
