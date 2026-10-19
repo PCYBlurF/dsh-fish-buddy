@@ -1,6 +1,6 @@
 ﻿#requires -Version 5.1
 <#
-  DSH 小鱼 · 桌面挂件
+  DSH 大肥鱼 · 桌面挂件
   透明置顶的 DeepSeek 鲸鱼娘（或大肥鱼），实时显示 DSH 任务进度，完成时提醒。
   由 fish-core.mjs 提供 state.json，本脚本只负责显示与交互。
 #>
@@ -545,7 +545,7 @@ function Init-Tray {
     } else {
       $script:Tray.Icon = [System.Drawing.SystemIcons]::Application
     }
-    $script:Tray.Text = 'DSH 小鱼'
+    $script:Tray.Text = 'DSH 大肥鱼'
     $script:Tray.Visible = $true
     $script:Tray.Add_DoubleClick({ Open-Dsh })
 
@@ -566,7 +566,7 @@ function Init-Tray {
     $miBigTray.Add_Click({ Apply-MascotScale ($script:Scale + 0.1) $true })
     $miSmallTray = $menu.Items.Add('缩小一点')
     $miSmallTray.Add_Click({ Apply-MascotScale ($script:Scale - 0.1) $true })
-    $miToggle = $menu.Items.Add('显示 / 隐藏小鱼')
+    $miToggle = $menu.Items.Add('显示 / 隐藏大肥鱼')
     $miToggle.Add_Click({
       if ($script:Window.IsVisible) {
         $script:Window.Hide()
@@ -591,7 +591,7 @@ function Init-Tray {
     $miReadme = $menu.Items.Add('打开说明')
     $miReadme.Add_Click({ try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $miExit = $menu.Items.Add('退出小鱼')
+    $miExit = $menu.Items.Add('退出大肥鱼')
     $miExit.Add_Click({ $script:Window.Close() })
     foreach ($it in $menu.Items) {
       if ($it -is [System.Windows.Forms.ToolStripMenuItem]) {
@@ -856,7 +856,7 @@ function Show-SizeInput([System.Windows.Forms.Button]$btn) {
   try {
     Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
     $cur = [int][Math]::Round($script:Scale * 100)
-    $value = [Microsoft.VisualBasic.Interaction]::InputBox('输入缩放比例（70 - 140）：', 'DSH 小鱼 · 自定义大小', ([string]$cur))
+    $value = [Microsoft.VisualBasic.Interaction]::InputBox('输入缩放比例（70 - 140）：', 'DSH 大肥鱼 · 自定义大小', ([string]$cur))
     if ([string]::IsNullOrWhiteSpace($value)) { return }
     $n = 0
     if (-not [int]::TryParse($value.Trim().TrimEnd('%'), [ref]$n)) { return }
@@ -935,7 +935,7 @@ $script:Menu.Add_Closed({
 function Open-TraySettings {
   try { Start-Process 'ms-settings:taskbar' | Out-Null } catch { }
   try {
-    [void][System.Windows.MessageBox]::Show("Windows 设置已打开。`n`n请进入：个性化 → 任务栏 → 其他系统托盘图标，`n找到带蓝色鲸鱼娘图标的「Windows PowerShell」，把它打开，`n图标就会常驻在右下角。", 'DSH 小鱼')
+    [void][System.Windows.MessageBox]::Show("Windows 设置已打开。`n`n请进入：个性化 → 任务栏 → 其他系统托盘图标，`n找到带蓝色鲸鱼娘图标的「Windows PowerShell」，把它打开，`n图标就会常驻在右下角。", 'DSH 大肥鱼')
   } catch { }
 }
 
@@ -971,7 +971,7 @@ function Show-ContextMenu {
   [void](Add-ContextItem '打开说明' { try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
-  [void](Add-ContextItem '退出小鱼' { $script:Window.Close() })
+  [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
   try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { }
 }
 
@@ -1046,7 +1046,7 @@ function Apply-State($st) {
         Write-DebugLog ("completion celebrate: " + $cid)
         Start-Celebrate
         Play-Chime
-        Notify-Completion 'DSH 小鱼 · 任务完成' ("$title · 用时 $(Format-Duration $dur)")
+        Notify-Completion 'DSH 大肥鱼 · 任务完成' ("$title · 用时 $(Format-Duration $dur)")
       }
     }
   }
@@ -1102,14 +1102,14 @@ function Render-Idle {
     Hide-Bubble
   } else {
     Set-BubbleVisible $true
-    $script:TitleText.Text = 'DSH 小鱼'
+    $script:TitleText.Text = 'DSH 大肥鱼'
     $script:CountText.Text = ''
     $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
     Set-Compact $false
     $script:TaskText.Text = '待命中，有任务就交给我吧～'
     $script:MetaText.Text = '双击我打开 DSH'
   }
-  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 小鱼 · 待命中' }
+  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 待命中' }
 }
 
 function Render-Working($session, [double]$now) {
@@ -1181,7 +1181,7 @@ function Render-Working($session, [double]$now) {
   Set-Compact $script:Collapsed
 
   if ($null -ne $script:Tray) {
-    $tray = 'DSH 小鱼 · 工作中'
+    $tray = 'DSH 大肥鱼 · 工作中'
     if ($total -gt 0) { $tray += " $done/$total" }
     $script:Tray.Text = $tray
   }
@@ -1214,7 +1214,7 @@ function Render-Done($session, $lastTurn) {
   $dur = if ($null -ne $lastTurn) { [double](Get-Prop $lastTurn 'durationMs') } else { 0 }
   $script:MetaText.Text = '用时 ' + (Format-Duration $dur) + ' · 双击打开 DSH'
   Set-Compact $false
-  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 小鱼 · 任务完成' }
+  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 任务完成' }
 }
 
 function Render-Error($session, $lastTurn) {
@@ -1236,7 +1236,7 @@ function Render-Error($session, $lastTurn) {
   $script:TaskText.Text = $err
   $script:MetaText.Text = '双击打开 DSH 查看详情'
   Set-Compact $false
-  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 小鱼 · 出错了' }
+  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 出错了' }
 }
 
 function Render-Aborted($session, $lastTurn) {
@@ -1255,7 +1255,7 @@ function Render-Aborted($session, $lastTurn) {
   $script:TaskText.Text = [string](Get-Prop $session 'title')
   $script:MetaText.Text = '等你回来继续～'
   Set-Compact $false
-  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 小鱼 · 已停止' }
+  if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 已停止' }
 }
 
 # ── 读取状态 ─────────────────────────────────────────────────────────────
@@ -1364,7 +1364,7 @@ $script:Tick.Add_Tick({
       Set-Alert $false
       Set-Sprite 'think' 900
       Set-DotColor '#5C6B95'
-      $script:TitleText.Text = 'DSH 小鱼'
+      $script:TitleText.Text = 'DSH 大肥鱼'
       $script:TaskText.Text = '正在连接 DSH…'
       $script:MetaText.Text = '首次启动会慢一点'
       $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
@@ -1393,7 +1393,7 @@ Set-Compact $script:Collapsed
 Set-BubbleVisible $true
 $script:Window.Add_Loaded({
   try {
-    $script:TitleText.Text = 'DSH 小鱼'
+    $script:TitleText.Text = 'DSH 大肥鱼'
     $script:TaskText.Text = '正在连接 DSH…'
     Show-Bubble
   } catch { }

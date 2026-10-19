@@ -1,4 +1,4 @@
-' DSH 小鱼 · 隐藏控制台启动（挂件脚本与本文件同目录）
+﻿' DSH 大肥鱼 · 隐藏控制台启动（挂件脚本与本文件同目录）
 Set fso = CreateObject("Scripting.FileSystemObject")
 dir = fso.GetParentFolderName(WScript.ScriptFullName)
 script = dir & "\fish-widget.ps1"

@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
- * DSH 小鱼 · 进度后端
+ * DSH 大肥鱼 · 进度后端
  *
  * 实时读取 DSH 会话日志（分帧 zstd JSONL），计算当前任务进度，
  * 并原子写入 state.json 供桌面挂件轮询。

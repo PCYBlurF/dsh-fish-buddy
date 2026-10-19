@@ -1,6 +1,6 @@
-<div align="center">
-  <img src="assets/screenshots/banner.png" alt="DSH 小鱼" width="100%">
-  <h1>DSH 小鱼 · 桌面鲸鱼娘进度挂件</h1>
+﻿<div align="center">
+  <img src="assets/screenshots/banner.png" alt="DSH 大肥鱼" width="100%">
+  <h1>DSH 大肥鱼 · 桌面鲸鱼娘进度挂件</h1>
   <p>常驻桌面的 Q 版 DeepSeek「鲸鱼娘」，实时显示 DeepSeek Harness 的任务进度；任务完成时她会跳起来、放星光、响一声并弹 Windows 通知。</p>
   <p>
     <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11-4D6BFE">
@@ -192,7 +192,7 @@ DSH 会话日志 (~/.dsh/sessions/**/session.v4.jsonl.zstd)
 
 - **不更新进度**：查看 `logs/core.log` 是否有新的 `启动 fish-core`；或先 `stop-fish.cmd` 再 `start-fish.cmd`。
 - **看不到她**：找任务栏托盘里的鱼图标；或重新运行 `start-fish.cmd`。
-- **托盘图标在 `^` 溢出区里**：Windows 11 默认把新图标收进溢出区，图标本身是正常注册的。右键小鱼 → **把图标固定到任务栏…**，在打开的设置里进入 **个性化 → 任务栏 → 其他系统托盘图标**，找到带蓝色鲸鱼娘图标的 **Windows PowerShell**（挂件跑在 powershell.exe 下），把它打开即可常驻右下角。
+- **托盘图标在 `^` 溢出区里**：Windows 11 默认把新图标收进溢出区，图标本身是正常注册的。右键大肥鱼 → **把图标固定到任务栏…**，在打开的设置里进入 **个性化 → 任务栏 → 其他系统托盘图标**，找到带蓝色鲸鱼娘图标的 **Windows PowerShell**（挂件跑在 powershell.exe 下），把它打开即可常驻右下角。
 - **插件没生效**：DSH 只在启动时读配置，装完/改完需要重启一次。
 - **窗口位置跑偏**：右键 → 重置位置，或删除 `ui.json` 后重启。
 - **想换全身立绘**：把图片放到 `assets/whale.png`（透明背景，竖图），把 `config.json` 的 `mascot` 改成 `whale` 后重启。该图片不随仓库分发。

@@ -1,5 +1,5 @@
-/**
- * DSH 小鱼 · 启动插件
+﻿/**
+ * DSH 大肥鱼 · 启动插件
  *
  * DSH 启动时把桌面上的鲸鱼娘挂件拉起来（已运行则挂件自己会忽略重复启动）。
  * 挂件与进度后端都在 ~/.dsh/fish-buddy 下，本插件只负责“开机叫醒它”。
@@ -40,7 +40,7 @@ export function apply(ctx, config = {}) {
 
   try {
     if (config && config.enabled === false) {
-      logInfo(ctx, 'DSH 小鱼自动启动已禁用');
+      logInfo(ctx, 'DSH 大肥鱼自动启动已禁用');
       return;
     }
 
@@ -63,7 +63,7 @@ export function apply(ctx, config = {}) {
       logWarn(ctx, `启动挂件失败：${error.message}`);
     });
     child.unref();
-    logInfo(ctx, 'DSH 小鱼已在桌面待命');
+    logInfo(ctx, 'DSH 大肥鱼已在桌面待命');
   } catch (error) {
     logWarn(ctx, `启动挂件异常：${error instanceof Error ? error.message : String(error)}`);
   }

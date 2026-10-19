@@ -27,7 +27,7 @@ if (-not (Test-Path -LiteralPath $patch)) {
   exit 1
 }
 
-Write-Host "DSH 小鱼安装器"
+Write-Host "DSH 大肥鱼安装器"
 Write-Host "  仓库目录：$repo"
 Write-Host "  配置文件：$patch"
 
@@ -79,5 +79,5 @@ if (-not $NoStart) {
 }
 
 Write-Host ""
-Write-Host "安装完成。请重启一次 DSH，插件会在启动时自动拉起小鱼。" -ForegroundColor Green
+Write-Host "安装完成。请重启一次 DSH，插件会在启动时自动拉起大肥鱼。" -ForegroundColor Green
 Write-Host "手动启动：start-fish.cmd    停止：stop-fish.cmd    卸载：uninstall.cmd"
