@@ -1194,20 +1194,8 @@ $script:GlassTextShadow.Opacity = 0.6
 $script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 213, 224, 255))
 $script:GlassMetaBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 194, 208, 239))
 
-$script:GlassWhite = New-Object Windows.Media.LinearGradientBrush
-$script:GlassWhite.StartPoint = New-Object Windows.Point(0, 0)
-$script:GlassWhite.EndPoint = New-Object Windows.Point(0.35, 1)
-[void]$script:GlassWhite.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(252, 255, 255, 255)), 0))
-[void]$script:GlassWhite.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(246, 244, 249, 255)), 0.25))
-[void]$script:GlassWhite.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(242, 234, 241, 251)), 0.6))
-[void]$script:GlassWhite.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(250, 255, 255, 255)), 1))
-$script:GlassClear = New-Object Windows.Media.LinearGradientBrush
-$script:GlassClear.StartPoint = New-Object Windows.Point(0, 0)
-$script:GlassClear.EndPoint = New-Object Windows.Point(0.35, 1)
-[void]$script:GlassClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(140, 255, 255, 255)), 0))
-[void]$script:GlassClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(115, 255, 255, 255)), 0.25))
-[void]$script:GlassClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(89, 255, 255, 255)), 0.55))
-[void]$script:GlassClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(77, 255, 255, 255)), 1))
+$script:GlassWhite = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 244, 248, 252))
+$script:GlassClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(205, 242, 246, 251))
 $script:GlassBorderWhite = New-Object Windows.Media.LinearGradientBrush
 $script:GlassBorderWhite.StartPoint = New-Object Windows.Point(0, 0)
 $script:GlassBorderWhite.EndPoint = New-Object Windows.Point(1, 1)
@@ -1220,8 +1208,8 @@ $script:GlassBorderClear.EndPoint = New-Object Windows.Point(1, 1)
 [void]$script:GlassBorderClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(235, 255, 255, 255)), 0))
 [void]$script:GlassBorderClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(90, 255, 255, 255)), 0.45))
 [void]$script:GlassBorderClear.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(190, 255, 255, 255)), 1))
-$script:GlassTailWhite = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(248, 250, 252, 255))
-$script:GlassTailClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(166, 230, 238, 250))
+$script:GlassTailWhite = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 244, 248, 252))
+$script:GlassTailClear = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(205, 242, 246, 251))
 $script:GlassTitleBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 22, 33, 61))
 $script:GlassTaskBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 43, 56, 85))
 $script:GlassCountBrush = New-Object Windows.Media.SolidColorBrush -ArgumentList ([Windows.Media.Color]::FromArgb(255, 82, 98, 127))
@@ -1247,7 +1235,7 @@ function Apply-Material {
     }
     $script:GlassTint.Visibility = [Windows.Visibility]::Collapsed
     if ($null -ne $script:GlassNoise) {
-      $script:GlassNoise.Visibility = if ($clear) { [Windows.Visibility]::Visible } else { [Windows.Visibility]::Collapsed }
+      $script:GlassNoise.Visibility = [Windows.Visibility]::Collapsed
       $script:GlassNoise.Opacity = if ($clear) { 0.3 } else { 0.85 }
     }
     if ($white) {
