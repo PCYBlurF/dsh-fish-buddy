@@ -43,6 +43,6 @@ The "liquid glass" bubble material is inspired by
 
 - No Vue/TypeScript code or shader files are copied into this repository.
 - The WPF implementation is independent: it uses a semi-transparent live
-overlay (no screen capture, blur or shader) with a specular border to
-approximate the reference's translucent glass look.
+overlay with a generated frost cloud texture and a specular border (no
+screen capture, blur or shader) to approximate the referenced material.
 - The reference project's package metadata declares the MIT license.
