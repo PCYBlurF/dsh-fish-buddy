@@ -343,6 +343,9 @@ function Start-Core {
   $node = Get-NodePath
   if ($null -eq $node) { return }
   try {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*fish-core.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  } catch { }
+  try {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $node
     $psi.Arguments = '"{0}" --state "{1}" --config "{2}"' -f $script:CorePath, $script:StatePath, $script:ConfigPath
@@ -818,49 +821,80 @@ function End-Drag($sender, $e) {
   $script:ClickTimer.Start()
 }
 
-# ── DeepSeek 余额 ────────────────────────────────────────────────────────
+# ── 模型余额 ─────────────────────────────────────────────────────────────
 $script:BalanceShowing = $false
 $script:BalanceBusy = $false
 $script:BalanceJob = $null
 $script:BalanceStarted = [DateTime]::Now
+$script:BalanceTitle = '模型余额'
+$script:BalanceModel = ''
+$script:BalanceKind = ''
 
 $script:BalancePoll = New-Object System.Windows.Threading.DispatcherTimer
 $script:BalancePoll.Interval = [TimeSpan]::FromMilliseconds(250)
 $script:BalancePoll.Add_Tick({ Update-BalanceJob })
 
 $script:BalanceRestore = New-Object System.Windows.Threading.DispatcherTimer
-$script:BalanceRestore.Interval = [TimeSpan]::FromSeconds(10)
+$script:BalanceRestore.Interval = [TimeSpan]::FromSeconds(3)
 $script:BalanceRestore.Add_Tick({
   $script:BalanceRestore.Stop()
   $script:BalanceShowing = $false
 })
 
-function Get-DeepSeekKey {
-  $k = [string]$env:DEEPSEEK_API_KEY
-  if ($k) { return $k.Trim() }
+function Get-DshCredential([string]$name) {
+  $v = [Environment]::GetEnvironmentVariable($name)
+  if ($v) { return $v.Trim() }
   $paths = New-Object System.Collections.ArrayList
   if ($env:DSH_HOME) { [void]$paths.Add((Join-Path $env:DSH_HOME '.credentials.yaml')) }
   if ($env:USERPROFILE) { [void]$paths.Add((Join-Path $env:USERPROFILE '.dsh\.credentials.yaml')) }
   foreach ($cred in $paths) {
     try {
-      if (-not (Test-Path -LiteralPath $cred)) {
-        continue
-      }
-      $m = Select-String -LiteralPath $cred -Pattern '^\s*DEEPSEEK_API_KEY:\s*(\S+)' | Select-Object -First 1
+      if (-not (Test-Path -LiteralPath $cred)) { continue }
+      $pattern = '^\s*' + [regex]::Escape($name) + ':\s*(\S+)'
+      $m = Select-String -LiteralPath $cred -Pattern $pattern | Select-Object -First 1
       if ($m) {
-        $v = $m.Matches[0].Groups[1].Value.Trim()
-        $v = $v.Trim('"').Trim("'")
-        if ($v) { return $v }
+        $val = $m.Matches[0].Groups[1].Value.Trim()
+        $val = $val.Trim('"').Trim("'")
+        if ($val) { return $val }
       }
-    } catch {
-    }
+    } catch { }
   }
   return ''
 }
 
-function Set-BalanceBubble([string]$text, [string]$meta, [string]$dot) {
+function Get-ActiveModel {
+  $provider = ''
+  $model = ''
+  try {
+    if ($null -ne $script:CurrentState) {
+      $session = $script:CurrentState.session
+      if ($null -ne $session) {
+        $provider = [string]$session.provider
+        $model = [string]$session.llmModel
+      }
+    }
+  } catch { }
+  if (-not $provider) {
+    try {
+      $home = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
+      $profile = Join-Path $home 'profiles\desktop\cordis.patch.yml'
+      if (Test-Path -LiteralPath $profile) {
+        $txt = Get-Content -LiteralPath $profile -Raw
+        if ($txt -match '(?s)- id: agent-default-model.*?provider:\s*([^\s]+).*?model:\s*([^\s]+)') {
+          $provider = $Matches[1]
+          $model = $Matches[2]
+        }
+      }
+    } catch { }
+  }
+  if (-not $provider) { $provider = 'deepseek-official' }
+  if (-not $model) { $model = 'deepseek-flash' }
+  return [pscustomobject]@{ Provider = $provider; Model = $model }
+}
+
+function Set-BalanceBubble([string]$title, [string]$text, [string]$meta, [string]$dot) {
   $script:BalanceShowing = $true
-  $script:TitleText.Text = 'DeepSeek 余额'
+  $script:TitleText.Text = $title
   $script:TaskText.Text = $text
   $script:MetaText.Text = $meta
   $script:CountText.Text = ''
@@ -876,29 +910,62 @@ function Set-BalanceBubble([string]$text, [string]$meta, [string]$dot) {
 
 function Show-Balance {
   if ($script:BalanceBusy) { return }
-  $key = Get-DeepSeekKey
+  $active = Get-ActiveModel
+  $provider = [string]$active.Provider
+  $model = [string]$active.Model
+  $script:BalanceModel = $model
+  $script:BalanceKind = ''
+  $endpoint = ''
+  $credName = ''
+  $title = ''
+  switch -Regex ($provider) {
+    'deepseek' {
+      $endpoint = 'https://api.deepseek.com/user/balance'
+      $credName = 'DEEPSEEK_API_KEY'
+      $title = 'DeepSeek 余额'
+      $script:BalanceKind = 'deepseek'
+    }
+    'openrouter' {
+      $endpoint = 'https://openrouter.ai/api/v1/credits'
+      $credName = 'OPENROUTER_API_KEY'
+      $title = 'OpenRouter 余额'
+      $script:BalanceKind = 'openrouter'
+    }
+    'moonshot|kimi' {
+      $endpoint = 'https://api.moonshot.cn/v1/users/me/balance'
+      $credName = 'MOONSHOT_API_KEY'
+      $title = 'Moonshot 余额'
+      $script:BalanceKind = 'moonshot'
+    }
+    default {
+      Set-BalanceBubble ($provider + ' 余额') '该 provider 暂无余额接口' ('当前模型：' + $model) '#FFB454'
+      return
+    }
+  }
+  $script:BalanceTitle = $title
+  $key = Get-DshCredential $credName
   if (-not $key) {
-    Set-BalanceBubble '未找到 API Key' '在 DSH 凭据中配置 DEEPSEEK_API_KEY' '#FF6B6B'
+    Set-BalanceBubble $title ('未找到 ' + $credName) ('当前模型：' + $model) '#FF6B6B'
     return
   }
   $script:BalanceBusy = $true
-  Set-BalanceBubble '查询中…' '正在连接 DeepSeek' '#7C93FF'
+  Set-BalanceBubble $title '查询中…' ($model + ' · 正在连接') '#7C93FF'
   try {
     $script:BalanceStarted = [DateTime]::Now
     $script:BalanceJob = Start-Job -ScriptBlock {
-      param($apiKey)
+      param($apiKey, $url)
       try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $r = Invoke-RestMethod -Uri 'https://api.deepseek.com/user/balance' -Headers @{ Authorization = ('Bearer ' + $apiKey); Accept = 'application/json' } -TimeoutSec 12
+        $r = Invoke-RestMethod -Uri $url -Headers @{ Authorization = ('Bearer ' + $apiKey); Accept = 'application/json' } -TimeoutSec 12
         return ($r | ConvertTo-Json -Depth 6 -Compress)
       } catch {
         return ('ERR:' + $_.Exception.Message)
       }
-    } -ArgumentList $key
+    } -ArgumentList $key, $endpoint
     $script:BalancePoll.Start()
   } catch {
     $script:BalanceBusy = $false
-    Set-BalanceBubble ('查询失败：' + $_.Exception.Message) '双击重试' '#FF6B6B'
+    Set-BalanceBubble $title ('查询失败：' + $_.Exception.Message) '双击重试' '#FF6B6B'
   }
 }
 
@@ -907,6 +974,8 @@ function Update-BalanceJob {
     try { $script:BalancePoll.Stop() } catch { }
     return
   }
+  $title = $script:BalanceTitle
+  $model = $script:BalanceModel
   $state = [string]$script:BalanceJob.State
   if ($state -eq 'Running' -or $state -eq 'NotStarted') {
     if (([DateTime]::Now - $script:BalanceStarted).TotalSeconds -gt 20) {
@@ -915,7 +984,7 @@ function Update-BalanceJob {
       $script:BalanceJob = $null
       $script:BalanceBusy = $false
       try { $script:BalancePoll.Stop() } catch { }
-      Set-BalanceBubble '查询超时' '双击重试' '#FF6B6B'
+      Set-BalanceBubble $title '查询超时' '双击重试' '#FF6B6B'
     }
     return
   }
@@ -933,24 +1002,48 @@ function Update-BalanceJob {
   if ($out -like 'ERR:*') {
     $msg = $out.Substring(4).Trim()
     if ($msg.Length -gt 60) { $msg = $msg.Substring(0, 60) + '…' }
-    Set-BalanceBubble ('查询失败：' + $msg) '双击重试' '#FF6B6B'
+    Set-BalanceBubble $title ('查询失败：' + $msg) '双击重试' '#FF6B6B'
     return
   }
   try {
     $data = $out | ConvertFrom-Json
-    $parts = @()
-    foreach ($b in @($data.balance_infos)) {
-      $cur = [string]$b.currency
-      $sym = if ($cur -eq 'CNY') { '¥' } elseif ($cur -eq 'USD') { '$' } else { $cur + ' ' }
-      $parts += ($sym + [string]$b.total_balance)
+    $text = ''
+    $meta = ''
+    $ok = $true
+    switch ($script:BalanceKind) {
+      'deepseek' {
+        $parts = @()
+        foreach ($b in @($data.balance_infos)) {
+          $cur = [string]$b.currency
+          $sym = if ($cur -eq 'CNY') { '¥' } elseif ($cur -eq 'USD') { '$' } else { $cur + ' ' }
+          $parts += ($sym + [string]$b.total_balance)
+        }
+        $text = if ($parts.Count -gt 0) { $parts -join '  ·  ' } else { '暂无余额信息' }
+        $ok = ($data.is_available -eq $true)
+        $meta = $model + ' · ' + $(if ($ok) { '可用' } else { '不可用' }) + ' · 双击刷新'
+      }
+      'openrouter' {
+        $credits = [double]$data.data.total_credits
+        $usage = [double]$data.data.total_usage
+        $left = $credits - $usage
+        $text = '$' + $left.ToString('0.00')
+        $ok = ($left -gt 0)
+        $meta = $model + ' · 剩余 · 双击刷新'
+      }
+      'moonshot' {
+        $text = '¥' + [string]$data.data.available_balance
+        $meta = $model + ' · 可用 · 双击刷新'
+      }
+      default {
+        $text = '暂无余额信息'
+        $ok = $false
+        $meta = $model
+      }
     }
-    $text = if ($parts.Count -gt 0) { $parts -join '  ·  ' } else { '暂无余额信息' }
-    $ok = ($data.is_available -eq $true)
-    $meta = if ($ok) { '可用 · 双击刷新' } else { '不可用 · 双击刷新' }
     $dot = if ($ok) { '#3DDC97' } else { '#FF6B6B' }
-    Set-BalanceBubble $text $meta $dot
+    Set-BalanceBubble $title $text $meta $dot
   } catch {
-    Set-BalanceBubble '解析余额失败' '双击重试' '#FF6B6B'
+    Set-BalanceBubble $title '解析余额失败' '双击重试' '#FF6B6B'
   }
 }
 
@@ -1612,7 +1705,7 @@ function Render-Idle {
     $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
     Set-Compact $false
     $script:TaskText.Text = '待命中，有任务就交给我吧～'
-    $script:MetaText.Text = '双击看 DeepSeek 余额'
+    $script:MetaText.Text = '双击看模型余额'
   }
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 待命中' }
 }
@@ -1742,7 +1835,7 @@ function Render-Error($session, $lastTurn) {
   if (-not $err) { $err = '任务执行失败' }
   if ($err.Length -gt 60) { $err = $err.Substring(0, 59) + '…' }
   $script:TaskText.Text = $err
-  $script:MetaText.Text = '双击查看 DeepSeek 余额'
+  $script:MetaText.Text = '双击查看模型余额'
   Set-Compact $false
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 出错了' }
 }

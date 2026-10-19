@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * DSH 大肥鱼 · 进度后端
  *
@@ -208,6 +208,8 @@ function modelFromEvents(events) {
     cwd: null,
     depth: 0,
     title: null,
+    provider: null,
+    llmModel: null,
     running: false,
     turn: null,
     turnStartedAt: null,
@@ -244,6 +246,26 @@ function modelFromEvents(events) {
       }
       case 'session/title': {
         if (data.title) model.title = data.title;
+        const src = data.source && data.source.model;
+        if (src && src.provider && !model.provider) model.provider = String(src.provider);
+        if (src && src.model && !model.llmModel) model.llmModel = String(src.model);
+        break;
+      }
+      case 'request/context': {
+        if (data.provider) model.provider = String(data.provider);
+        if (data.model) model.llmModel = String(data.model);
+        break;
+      }
+      case 'request/header': {
+        const cfg = (data.header && data.header.config) || {};
+        if (cfg.provider) model.provider = String(cfg.provider);
+        if (cfg.model) model.llmModel = String(cfg.model);
+        break;
+      }
+      case 'assistant/message': {
+        const source = (data.message && data.message.source) || {};
+        if (source.provider) model.provider = String(source.provider);
+        if (source.model) model.llmModel = String(source.model);
         break;
       }
       case 'user/message': {
@@ -460,6 +482,8 @@ function buildState(now) {
     return {
       id: m.id,
       title: m.title || '新的任务',
+      provider: m.provider || '',
+      llmModel: m.llmModel || '',
       cwd: m.cwd || '',
       running: m.running,
       turn: m.turn,
