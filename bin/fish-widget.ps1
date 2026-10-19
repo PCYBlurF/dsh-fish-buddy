@@ -117,6 +117,10 @@ if ($null -eq $script:Ui) {
 
 $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
+$script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
+$script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
+$script:Version = '0.1.0'
+$script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $script:PinnedSessionId = ''
 try { if ($script:Ui.pinned) { $script:PinnedSessionId = [string]$script:Ui.pinned } } catch { }
 $script:CurrentSessions = @()
@@ -142,6 +146,7 @@ else { $script:Scale = [Math]::Max(0.7, [Math]::Min(1.4, $script:Scale)) }
 [xml]$xaml = Get-Content -LiteralPath $script:XamlPath -Raw -Encoding UTF8
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $script:Window = [Windows.Markup.XamlReader]::Load($reader)
+try { $script:Window.Topmost = [bool]$script:Topmost } catch { }
 
 function Find-Name([string]$name) { return $script:Window.FindName($name) }
 
@@ -429,6 +434,8 @@ function Save-WindowPos {
     $script:Ui | Add-Member -NotePropertyName sound -NotePropertyValue ([bool]$script:SoundOn) -Force
     $script:Ui | Add-Member -NotePropertyName pinned -NotePropertyValue ([string]$script:PinnedSessionId) -Force
     $script:Ui | Add-Member -NotePropertyName scale -NotePropertyValue ([double]$script:Scale) -Force
+    $script:Ui | Add-Member -NotePropertyName notify -NotePropertyValue ([bool]$script:NotifyOn) -Force
+    $script:Ui | Add-Member -NotePropertyName topmost -NotePropertyValue ([bool]$script:Topmost) -Force
     Save-JsonFile $script:UiPath $script:Ui
   } catch { }
 }
@@ -617,7 +624,7 @@ function Init-Tray {
 
 function Notify-Completion([string]$title, [string]$body) {
   if ($null -eq $script:Tray) { return }
-  if ($null -ne $script:Config -and $script:Config.notify -eq $false) { return }
+  if (-not $script:NotifyOn) { return }
   try {
     $script:Tray.ShowBalloonTip(6000, $title, $body, [System.Windows.Forms.ToolTipIcon]::None)
   } catch { }
@@ -949,6 +956,140 @@ function Open-TraySettings {
   } catch { }
 }
 
+function Test-Autostart {
+  try {
+    $v = (Get-ItemProperty -Path $script:RunKey -Name 'DshFishBuddy' -ErrorAction Stop).DshFishBuddy
+    return [bool]$v
+  } catch { return $false }
+}
+
+function Toggle-Autostart {
+  try {
+    if (Test-Autostart) {
+      Remove-ItemProperty -Path $script:RunKey -Name 'DshFishBuddy' -Force -ErrorAction SilentlyContinue
+    } else {
+      $root = $env:SystemRoot
+      if (-not $root) { $root = 'C:\Windows' }
+      $wscript = Join-Path $root 'System32\wscript.exe'
+      $vbs = Join-Path $script:AppDir 'bin\fish-widget.vbs'
+      $cmd = '"' + $wscript + '" "' + $vbs + '"'
+      Set-ItemProperty -Path $script:RunKey -Name 'DshFishBuddy' -Value $cmd -Force
+    }
+  } catch { }
+}
+
+function Toggle-Notify {
+  $script:NotifyOn = -not $script:NotifyOn
+  $script:Ui | Add-Member -NotePropertyName notify -NotePropertyValue ([bool]$script:NotifyOn) -Force
+  Save-WindowPos
+}
+
+function Toggle-Topmost {
+  $script:Topmost = -not $script:Topmost
+  try { $script:Window.Topmost = [bool]$script:Topmost } catch { }
+  $script:Ui | Add-Member -NotePropertyName topmost -NotePropertyValue ([bool]$script:Topmost) -Force
+  Save-WindowPos
+}
+
+function Restart-Core {
+  try {
+    Stop-Core
+    $script:CoreProc = $null
+    Start-Sleep -Milliseconds 450
+    $script:CoreRestarts = 0
+    Start-Core
+    if ($null -ne $script:Tray) {
+      try { $script:Tray.ShowBalloonTip(2200, 'DSH 大肥鱼', '后端已重启', [System.Windows.Forms.ToolTipIcon]::None) } catch { }
+    }
+  } catch { }
+}
+
+function Open-Log {
+  try {
+    $log = Join-Path $script:AppDir 'logs\widget.log'
+    if (Test-Path -LiteralPath $log) {
+      Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $log + '"') | Out-Null
+    } else {
+      Start-Process -FilePath (Join-Path $script:AppDir 'logs') | Out-Null
+    }
+  } catch { }
+}
+
+function Open-AppDir {
+  try { Start-Process -FilePath $script:AppDir | Out-Null } catch { }
+}
+
+function Check-Update {
+  $title = 'DSH 大肥鱼 · 检查更新'
+  try {
+    $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/PCYBlurF/dsh-fish-buddy/releases/latest' -Headers @{ 'User-Agent' = 'dsh-fish-buddy' } -TimeoutSec 8
+    $latest = [string]$rel.tag_name
+    if (-not $latest) {
+      [void][System.Windows.MessageBox]::Show('还没有发布版本。', $title)
+      return
+    }
+    $cur = 'v' + $script:Version
+    $isNew = $false
+    try { $isNew = ([version]($latest.TrimStart('v'))).CompareTo([version]$script:Version) -gt 0 } catch { }
+    if ($isNew) {
+      $r = [System.Windows.MessageBox]::Show(("发现新版本 $latest。`n`n当前版本 $cur`n`n是否打开下载页？"), $title, [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+      if ($r -eq [System.Windows.MessageBoxResult]::Yes) {
+        try { Start-Process $rel.html_url | Out-Null } catch { }
+      }
+    } else {
+      [void][System.Windows.MessageBox]::Show(("当前已是最新版本 $cur。"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
+    }
+  } catch {
+    [void][System.Windows.MessageBox]::Show(("检查更新失败：`n" + $_.Exception.Message), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+  }
+}
+
+function Show-About {
+  $text = "DSH 大肥鱼 v$script:Version`n`n桌面鲸鱼娘进度挂件 for DeepSeek Harness`n`nMIT License`nhttps://github.com/PCYBlurF/dsh-fish-buddy`n`n非官方同人项目"
+  [void][System.Windows.MessageBox]::Show($text, '关于 DSH 大肥鱼', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
+}
+
+function Add-SubItem($parent, [string]$text, [scriptblock]$action) {
+  $it = New-Object System.Windows.Forms.ToolStripMenuItem
+  $it.Text = $text
+  $it.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $it.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $it.Padding = New-Object System.Windows.Forms.Padding(8, 4, 10, 4)
+  if ($null -ne $action) { $it.Add_Click($action) }
+  [void]$parent.DropDownItems.Add($it)
+  return $it
+}
+
+function Add-SettingsMenu {
+  $set = New-Object System.Windows.Forms.ToolStripMenuItem
+  $set.Text = '设置'
+  $set.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $set.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $set.Padding = New-Object System.Windows.Forms.Padding(8, 4, 10, 4)
+  $set.DropDown.ShowImageMargin = $false
+  $set.DropDown.ShowCheckMargin = $false
+  $set.DropDown.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $set.DropDown.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $set.DropDown.Font = $script:Menu.Font
+  try { $set.DropDown.Renderer = $script:Menu.Renderer } catch { }
+
+  $auto = if (Test-Autostart) { '开机自启：开' } else { '开机自启：关' }
+  [void](Add-SubItem $set $auto { Toggle-Autostart })
+  [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+  $notify = if ($script:NotifyOn) { '桌面通知：开' } else { '桌面通知：关' }
+  [void](Add-SubItem $set $notify { Toggle-Notify })
+  $top = if ($script:Topmost) { '总在最前：开' } else { '总在最前：关' }
+  [void](Add-SubItem $set $top { Toggle-Topmost })
+  [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+  [void](Add-SubItem $set '重启后端' { Restart-Core })
+  [void](Add-SubItem $set '打开日志' { Open-Log })
+  [void](Add-SubItem $set '打开安装目录' { Open-AppDir })
+  [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+  [void](Add-SubItem $set '检查更新' { Check-Update })
+  [void](Add-SubItem $set '关于' { Show-About })
+  [void]$script:Menu.Items.Add($set)
+}
+
 function Show-ContextMenu {
   $script:Menu.Items.Clear()
   [void](Add-ContextItem '打开 DSH' { Open-Dsh })
@@ -976,6 +1117,7 @@ function Show-ContextMenu {
   [void](Add-ContextItem '显示 / 隐藏详情' { Toggle-Collapsed })
   if ($script:SoundOn) { [void](Add-ContextItem '提醒音：开' { Toggle-Sound }) }
   else { [void](Add-ContextItem '提醒音：关' { Toggle-Sound }) }
+  [void](Add-SettingsMenu)
   [void](Add-ContextItem '把图标固定到任务栏…' { Open-TraySettings })
   [void](Add-ContextItem '重置位置' { Reset-Position })
   [void](Add-ContextItem '打开说明' { try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
