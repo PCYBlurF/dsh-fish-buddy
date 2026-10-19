@@ -24,9 +24,6 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-if (-not ($Preview -or $Shot)) {
-  try { [System.IO.File]::WriteAllText($script:PidPath, [string]$PID) } catch { }
-}
 
 function Write-DebugLog([string]$msg) {
   try {
@@ -42,11 +39,24 @@ try {
 } catch { }
 
 # ── 单实例 ───────────────────────────────────────────────────────────────
+Write-DebugLog ("boot pid=$PID dir=" + $script:AppDir)
 $script:Mutex = New-Object System.Threading.Mutex($false, 'Local\DshFishBuddyWidget')
 if (-not ($Preview -or $Shot)) {
-  if (-not $script:Mutex.WaitOne(0)) { return }
+  $got = $false
+  try {
+    $got = $script:Mutex.WaitOne(0)
+  } catch [System.Threading.AbandonedMutexException] {
+    $got = $true
+    Write-DebugLog 'mutex abandoned, taking over'
+  } catch {
+    Write-DebugLog ("mutex error: " + $_.Exception.Message)
+  }
+  if (-not $got) { Write-DebugLog 'mutex busy, exit'; return }
 }
 $script:OwnMutex = $true
+if (-not ($Preview -or $Shot)) {
+  try { [System.IO.File]::WriteAllText($script:PidPath, [string]$PID) } catch { }
+}
 
 # ── 程序集 ───────────────────────────────────────────────────────────────
 Add-Type -AssemblyName PresentationFramework
