@@ -550,6 +550,12 @@ function Init-Tray {
     $script:Tray.Add_DoubleClick({ Open-Dsh })
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.ShowImageMargin = $false
+    $menu.ShowCheckMargin = $false
+    $menu.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+    $menu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+    $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+    try { $menu.Renderer = New-Object System.Windows.Forms.ToolStripProfessionalRenderer (New-Object DshFishMenuColors) } catch { }
     $miOpen = $menu.Items.Add('打开 DSH')
     $miOpen.Add_Click({ Open-Dsh })
     $miPet = $menu.Items.Add('摸摸头')
@@ -572,9 +578,11 @@ function Init-Tray {
     $miDetail.Add_Click({ Toggle-Collapsed })
     $miPinTray = $menu.Items.Add('把图标固定到任务栏…')
     $miPinTray.Add_Click({ Open-TraySettings })
-    $miSound = $menu.Items.Add('提醒音')
+    $soundLabel = if ($script:SoundOn) { '提醒音：开' } else { '提醒音：关' }
+    $miSound = $menu.Items.Add($soundLabel)
     $miSound.Add_Click({
       $script:SoundOn = -not $script:SoundOn
+      if ($script:SoundOn) { $miSound.Text = '提醒音：开' } else { $miSound.Text = '提醒音：关' }
       $script:Ui | Add-Member -NotePropertyName sound -NotePropertyValue ([bool]$script:SoundOn) -Force
       Save-WindowPos
     })
@@ -585,8 +593,13 @@ function Init-Tray {
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     $miExit = $menu.Items.Add('退出小鱼')
     $miExit.Add_Click({ $script:Window.Close() })
+    foreach ($it in $menu.Items) {
+      if ($it -is [System.Windows.Forms.ToolStripMenuItem]) {
+        $it.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+        $it.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+      }
+    }
     $script:Tray.ContextMenuStrip = $menu
-
     $script:Tray.Add_BalloonTipClicked({ Open-Dsh })
     Write-DebugLog ("tray visible=" + $script:Tray.Visible + " text=" + $script:Tray.Text)
   } catch { Write-DebugLog ("tray init failed: " + $_.Exception.Message) }
