@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.6'
+$script:Version = '0.1.7'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -670,6 +670,7 @@ function Init-Tray {
       }
     }
     $script:Tray.ContextMenuStrip = $menu
+    try { Set-MenuTheme $menu $script:Material } catch { }
     $script:Tray.Add_BalloonTipClicked({ Open-Dsh })
     Write-DebugLog ("tray visible=" + $script:Tray.Visible + " text=" + $script:Tray.Text)
   } catch { Write-DebugLog ("tray init failed: " + $_.Exception.Message) }
@@ -1103,11 +1104,12 @@ public class DshFishMenuColors : ProfessionalColorTable {
   public override Color SeparatorLight { get { return Line; } }
 }
 public class DshFishRenderer : ToolStripProfessionalRenderer {
+  public Color ArrowColor = Color.FromArgb(242, 246, 255);
   public DshFishRenderer(ProfessionalColorTable table) : base(table) { }
   protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e) {
     Rectangle r = e.ArrowRectangle;
     if (r.Width <= 0 || r.Height <= 0) { base.OnRenderArrow(e); return; }
-    using (SolidBrush b = new SolidBrush(Color.FromArgb(242, 246, 255))) {
+    using (SolidBrush b = new SolidBrush(ArrowColor)) {
       Point[] pts = new Point[] {
         new Point(r.Left + 2, r.Top + 1),
         new Point(r.Right - 1, r.Top + (r.Height / 2)),
@@ -1116,6 +1118,38 @@ public class DshFishRenderer : ToolStripProfessionalRenderer {
       e.Graphics.FillPolygon(b, pts);
     }
   }
+}
+public class DshFishMenuColorsLight : ProfessionalColorTable {
+  private static Color Bg = Color.FromArgb(244, 248, 252);
+  private static Color Line = Color.FromArgb(175, 189, 210);
+  private static Color Sel = Color.FromArgb(220, 229, 242);
+  public override Color ToolStripDropDownBackground { get { return Bg; } }
+  public override Color ImageMarginGradientBegin { get { return Bg; } }
+  public override Color ImageMarginGradientMiddle { get { return Bg; } }
+  public override Color ImageMarginGradientEnd { get { return Bg; } }
+  public override Color MenuBorder { get { return Line; } }
+  public override Color MenuItemBorder { get { return Sel; } }
+  public override Color MenuItemSelected { get { return Sel; } }
+  public override Color MenuItemSelectedGradientBegin { get { return Sel; } }
+  public override Color MenuItemSelectedGradientEnd { get { return Sel; } }
+  public override Color SeparatorDark { get { return Line; } }
+  public override Color SeparatorLight { get { return Line; } }
+}
+public class DshFishMenuColorsGlass : ProfessionalColorTable {
+  private static Color Bg = Color.FromArgb(233, 239, 247);
+  private static Color Line = Color.FromArgb(183, 198, 221);
+  private static Color Sel = Color.FromArgb(214, 226, 242);
+  public override Color ToolStripDropDownBackground { get { return Bg; } }
+  public override Color ImageMarginGradientBegin { get { return Bg; } }
+  public override Color ImageMarginGradientMiddle { get { return Bg; } }
+  public override Color ImageMarginGradientEnd { get { return Bg; } }
+  public override Color MenuBorder { get { return Line; } }
+  public override Color MenuItemBorder { get { return Sel; } }
+  public override Color MenuItemSelected { get { return Sel; } }
+  public override Color MenuItemSelectedGradientBegin { get { return Sel; } }
+  public override Color MenuItemSelectedGradientEnd { get { return Sel; } }
+  public override Color SeparatorDark { get { return Line; } }
+  public override Color SeparatorLight { get { return Line; } }
 }
 "@ -ReferencedAssemblies System.Windows.Forms, System.Drawing -ErrorAction SilentlyContinue
 } catch { }
@@ -1130,6 +1164,74 @@ $script:Menu.Padding = New-Object System.Windows.Forms.Padding(4)
 try {
   $script:Menu.Renderer = New-Object DshFishRenderer (New-Object DshFishMenuColors)
 } catch { }
+
+function Set-MenuControlTheme($ctrl, $bg, $fg, $line, $sel) {
+  if ($null -eq $ctrl) { return }
+  try { $ctrl.BackColor = $bg } catch { }
+  if ($ctrl -is [System.Windows.Forms.Label] -or $ctrl -is [System.Windows.Forms.Button]) {
+    try { $ctrl.ForeColor = $fg } catch { }
+  }
+  if ($ctrl -is [System.Windows.Forms.Button]) {
+    try {
+      $ctrl.FlatAppearance.BorderColor = $line
+      $ctrl.FlatAppearance.MouseOverBackColor = $sel
+      $ctrl.FlatAppearance.MouseDownBackColor = $sel
+    } catch { }
+  }
+  foreach ($child in $ctrl.Controls) { Set-MenuControlTheme $child $bg $fg $line $sel }
+}
+
+function Set-MenuItemsTheme($items, $bg, $fg, $dim, $line, $sel, $renderer) {
+  foreach ($it in $items) {
+    if ($it -is [System.Windows.Forms.ToolStripSeparator]) { continue }
+    try {
+      $it.BackColor = $bg
+      $it.ForeColor = if ($it.Enabled) { $fg } else { $dim }
+    } catch { }
+    if ($it -is [System.Windows.Forms.ToolStripControlHost] -and $null -ne $it.Control) {
+      Set-MenuControlTheme $it.Control $bg $fg $line $sel
+    }
+    if ($it.DropDownItems.Count -gt 0) {
+      try {
+        $it.DropDown.BackColor = $bg
+        $it.DropDown.ForeColor = $fg
+        $it.DropDown.Renderer = $renderer
+      } catch { }
+      Set-MenuItemsTheme $it.DropDownItems $bg $fg $dim $line $sel $renderer
+    }
+  }
+}
+
+function Set-MenuTheme($menu, [string]$material) {
+  if ($null -eq $menu) { return }
+  $bg = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $fg = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $dim = [System.Drawing.Color]::FromArgb(150, 166, 205)
+  $line = [System.Drawing.Color]::FromArgb(52, 68, 110)
+  $sel = [System.Drawing.Color]::FromArgb(52, 72, 118)
+  $table = New-Object DshFishMenuColors
+  if ($material -eq 'white') {
+    $bg = [System.Drawing.Color]::FromArgb(244, 248, 252)
+    $fg = [System.Drawing.Color]::FromArgb(22, 33, 61)
+    $dim = [System.Drawing.Color]::FromArgb(94, 111, 140)
+    $line = [System.Drawing.Color]::FromArgb(175, 189, 210)
+    $sel = [System.Drawing.Color]::FromArgb(220, 229, 242)
+    $table = New-Object DshFishMenuColorsLight
+  } elseif ($material -eq 'glass') {
+    $bg = [System.Drawing.Color]::FromArgb(233, 239, 247)
+    $fg = [System.Drawing.Color]::FromArgb(22, 33, 61)
+    $dim = [System.Drawing.Color]::FromArgb(94, 111, 140)
+    $line = [System.Drawing.Color]::FromArgb(183, 198, 221)
+    $sel = [System.Drawing.Color]::FromArgb(214, 226, 242)
+    $table = New-Object DshFishMenuColorsGlass
+  }
+  $renderer = New-Object DshFishRenderer -ArgumentList $table
+  $renderer.ArrowColor = $fg
+  $menu.Renderer = $renderer
+  $menu.BackColor = $bg
+  $menu.ForeColor = $fg
+  Set-MenuItemsTheme $menu.Items $bg $fg $dim $line $sel $renderer
+}
 
 function Add-ContextItem([string]$text, [scriptblock]$action, [bool]$enabled = $true) {
   $it = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1582,6 +1684,7 @@ function Show-ContextMenu {
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
   [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
+  try { Set-MenuTheme $script:Menu $script:Material } catch { }
   try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { }
 }
 
@@ -1591,6 +1694,11 @@ function Set-Material([string]$m) {
   $script:Ui | Add-Member -NotePropertyName material -NotePropertyValue ([string]$m) -Force
   Save-WindowPos
   Apply-Material
+  try {
+    if ($null -ne $script:Tray -and $null -ne $script:Tray.ContextMenuStrip) {
+      Set-MenuTheme $script:Tray.ContextMenuStrip $script:Material
+    }
+  } catch { }
 }
 
 function Toggle-Sound {
