@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.12'
+$script:Version = '0.1.13'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -604,6 +604,75 @@ function Stop-Celebrate {
 
 # ── 托盘提醒 ─────────────────────────────────────────────────────────────
 $script:Tray = $null
+$script:HotkeyRegistered = $false
+$script:HotkeyHwnd = [IntPtr]::Zero
+$script:HotkeySource = $null
+$script:HotkeyHandler = $null
+$script:HotkeyId = 0x4A01
+
+function Toggle-FishWindow {
+  if ($null -eq $script:Window) { return }
+  try {
+    if ($script:Window.IsVisible) {
+      $script:Window.Hide()
+      Write-DebugLog 'hotkey hide'
+    } else {
+      $script:Window.Show()
+      $script:Window.Activate()
+      Write-DebugLog 'hotkey show'
+    }
+  } catch {
+    Write-DebugLog ('toggle error: ' + $_.Exception.Message)
+  }
+}
+
+function Register-Hotkey {
+  if ($script:HotkeyRegistered) { return }
+  try {
+    $params = New-Object System.Windows.Interop.HwndSourceParameters('DSHFishHotkey')
+    $params.WindowStyle = 0
+    $source = New-Object System.Windows.Interop.HwndSource($params)
+    if ($null -eq $source -or $source.Handle -eq [IntPtr]::Zero) {
+      Write-DebugLog 'hotkey window failed'
+      return
+    }
+    $script:HotkeySource = $source
+    $hwnd = $source.Handle
+    $ok = [DshFishWin]::RegisterHotKey($hwnd, $script:HotkeyId, 0x0003, 0x48)
+    if (-not $ok) {
+      Write-DebugLog 'hotkey register failed'
+      try { $source.Dispose() } catch { }
+      $script:HotkeySource = $null
+      return
+    }
+    $script:HotkeyRegistered = $true
+    $script:HotkeyHwnd = $hwnd
+    $script:HotkeyHandler = [System.Windows.Interop.HwndSourceHook]{
+      param($h, $msg, $w, $l, [ref]$handled)
+      if ($msg -eq 0x0312 -and $w -eq $script:HotkeyId) {
+        Write-DebugLog 'hotkey message'
+        Toggle-FishWindow
+        $handled.Value = $true
+      }
+      return [IntPtr]::Zero
+    }
+    [void]$source.AddHook($script:HotkeyHandler)
+    Write-DebugLog 'hotkey Ctrl+Alt+H registered'
+  } catch {
+    Write-DebugLog ('hotkey error: ' + $_.Exception.Message)
+  }
+}
+
+function Unregister-Hotkey {
+  try { if ($null -ne $script:HotkeySource -and $null -ne $script:HotkeyHandler) { $script:HotkeySource.RemoveHook($script:HotkeyHandler) } } catch { }
+  try { if ($script:HotkeyRegistered -and $script:HotkeyHwnd -ne [IntPtr]::Zero) { [void][DshFishWin]::UnregisterHotKey($script:HotkeyHwnd, $script:HotkeyId) } } catch { }
+  try { if ($null -ne $script:HotkeySource) { $script:HotkeySource.Dispose() } } catch { }
+  $script:HotkeyRegistered = $false
+  $script:HotkeyHwnd = [IntPtr]::Zero
+  $script:HotkeySource = $null
+  $script:HotkeyHandler = $null
+}
+
 function Init-Tray {
   if ($null -ne $script:Tray) { return }
   if ($null -ne $script:Config -and $script:Config.tray -eq $false) { Write-DebugLog 'tray disabled by config'; return }
@@ -624,7 +693,7 @@ function Init-Tray {
     $menu.ShowCheckMargin = $false
     $menu.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
     $menu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
-    $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+    $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
     try { $menu.Renderer = New-Object DshFishRenderer (New-Object DshFishMenuColors) } catch { }
     $miOpen = $menu.Items.Add('打开 DSH')
     $miOpen.Add_Click({ Open-Dsh })
@@ -637,13 +706,7 @@ function Init-Tray {
     $miSmallTray = $menu.Items.Add('缩小一点')
     $miSmallTray.Add_Click({ Apply-MascotScale ($script:Scale - 0.1) $true })
     $miToggle = $menu.Items.Add('显示 / 隐藏大肥鱼')
-    $miToggle.Add_Click({
-      if ($script:Window.IsVisible) {
-        $script:Window.Hide()
-      } else {
-        $script:Window.Show(); $script:Window.Activate()
-      }
-    })
+    $miToggle.Add_Click({ Toggle-FishWindow })
     $miDetail = $menu.Items.Add('显示 / 隐藏详情')
     $miDetail.Add_Click({ Toggle-Collapsed })
     $miPinTray = $menu.Items.Add('把图标固定到任务栏…')
@@ -660,6 +723,8 @@ function Init-Tray {
     $miReset.Add_Click({ Reset-Position })
     $miReadme = $menu.Items.Add('打开说明')
     $miReadme.Add_Click({ try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
+    $miUpdateTray = $menu.Items.Add('检查更新')
+    $miUpdateTray.Add_Click({ Check-Update })
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     $miExit = $menu.Items.Add('退出大肥鱼')
     $miExit.Add_Click({ $script:Window.Close() })
@@ -670,6 +735,7 @@ function Init-Tray {
       }
     }
     $script:Tray.ContextMenuStrip = $menu
+    $menu.Add_Opened({ Set-RoundedMenu $menu 8 })
     try { Set-MenuTheme $menu $script:Material } catch { }
     $script:Tray.Add_BalloonTipClicked({ Open-Dsh })
     Write-DebugLog ("tray visible=" + $script:Tray.Visible + " text=" + $script:Tray.Text)
@@ -695,6 +761,11 @@ public static class DshFishWin {
   [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool altTab);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, int dwFlags, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, int flags);
+  [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+  [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+  [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+  [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 }
 "@
 
@@ -1100,7 +1171,9 @@ $script:FishHost.Add_MouseLeave({ Set-Hover $false })
 # 右键菜单（WinForms，深色、无图标栏）
 try {
   Add-Type -TypeDefinition @"
+using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 public class DshFishMenuColors : ProfessionalColorTable {
   private static Color Bg = Color.FromArgb(18, 26, 50);
@@ -1120,7 +1193,22 @@ public class DshFishMenuColors : ProfessionalColorTable {
 }
 public class DshFishRenderer : ToolStripProfessionalRenderer {
   public Color ArrowColor = Color.FromArgb(242, 246, 255);
+  public bool Glass = false;
   public DshFishRenderer(ProfessionalColorTable table) : base(table) { }
+  protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) {
+    if (!Glass) { base.OnRenderToolStripBackground(e); return; }
+    Rectangle r = e.AffectedBounds;
+    if (r.Width <= 0 || r.Height <= 0) return;
+    using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(r.X, r.Y, r.Width, r.Height), Color.FromArgb(92, 98, 134), Color.FromArgb(62, 68, 100), 90f)) {
+      e.Graphics.FillRectangle(b, r);
+    }
+  }
+  protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) {
+    if (!Glass) { base.OnRenderToolStripBorder(e); return; }
+    using (Pen p = new Pen(Color.FromArgb(154, 163, 200), 1)) {
+      e.Graphics.DrawRectangle(p, 0, 0, Math.Max(0, e.ToolStrip.Width - 1), Math.Max(0, e.ToolStrip.Height - 1));
+    }
+  }
   protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e) {
     Rectangle r = e.ArrowRectangle;
     if (r.Width <= 0 || r.Height <= 0) { base.OnRenderArrow(e); return; }
@@ -1151,9 +1239,9 @@ public class DshFishMenuColorsLight : ProfessionalColorTable {
   public override Color SeparatorLight { get { return Line; } }
 }
 public class DshFishMenuColorsGlass : ProfessionalColorTable {
-  private static Color Bg = Color.FromArgb(233, 239, 247);
-  private static Color Line = Color.FromArgb(183, 198, 221);
-  private static Color Sel = Color.FromArgb(214, 226, 242);
+  private static Color Bg = Color.FromArgb(78, 84, 120);
+  private static Color Line = Color.FromArgb(154, 163, 200);
+  private static Color Sel = Color.FromArgb(102, 110, 154);
   public override Color ToolStripDropDownBackground { get { return Bg; } }
   public override Color ImageMarginGradientBegin { get { return Bg; } }
   public override Color ImageMarginGradientMiddle { get { return Bg; } }
@@ -1174,11 +1262,29 @@ $script:Menu.ShowImageMargin = $false
 $script:Menu.ShowCheckMargin = $false
 $script:Menu.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
 $script:Menu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
-$script:Menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$script:Menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
 $script:Menu.Padding = New-Object System.Windows.Forms.Padding(4)
 try {
   $script:Menu.Renderer = New-Object DshFishRenderer (New-Object DshFishMenuColors)
-} catch { }
+} catch { Write-DebugLog ('menu renderer init error: ' + $_.Exception.Message) }
+
+$script:Menu.Add_Opened({
+  Set-RoundedMenu $script:Menu 8
+  foreach ($it in $script:Menu.Items) {
+    if ($it.DropDownItems.Count -gt 0) {
+      try {
+        $dd = $it.DropDown
+        if ($null -ne $dd) {
+          Set-MenuTheme $dd $script:Material
+          $handler = { Set-RoundedMenu $dd 8 }.GetNewClosure()
+          $dd.Add_Opened($handler)
+        }
+      } catch {
+        Write-DebugLog ('submenu theme error: ' + $_.Exception.Message)
+      }
+    }
+  }
+})
 
 function Set-MenuControlTheme($ctrl, $bg, $fg, $line, $sel) {
   if ($null -eq $ctrl) { return }
@@ -1196,25 +1302,59 @@ function Set-MenuControlTheme($ctrl, $bg, $fg, $line, $sel) {
   foreach ($child in $ctrl.Controls) { Set-MenuControlTheme $child $bg $fg $line $sel }
 }
 
-function Set-MenuItemsTheme($items, $bg, $fg, $dim, $line, $sel, $renderer) {
+function Set-MenuItemsTheme($items, $itemBg, $bg, $fg, $dim, $line, $sel, $renderer) {
   foreach ($it in $items) {
     if ($it -is [System.Windows.Forms.ToolStripSeparator]) { continue }
     try {
-      $it.BackColor = $bg
+      $it.BackColor = $itemBg
       $it.ForeColor = if ($it.Enabled) { $fg } else { $dim }
     } catch { }
     if ($it -is [System.Windows.Forms.ToolStripControlHost] -and $null -ne $it.Control) {
       Set-MenuControlTheme $it.Control $bg $fg $line $sel
     }
     if ($it.DropDownItems.Count -gt 0) {
-      try {
-        $it.DropDown.BackColor = $bg
-        $it.DropDown.ForeColor = $fg
-        $it.DropDown.Renderer = $renderer
-      } catch { }
-      Set-MenuItemsTheme $it.DropDownItems $bg $fg $dim $line $sel $renderer
+      $it.add_DropDownOpening({
+        try { Set-MenuTheme $it.DropDown $script:Material } catch { Write-DebugLog ('submenu theme error: ' + $_.Exception.Message) }
+        try {
+          $dd = $it.DropDown
+          $handler = { Set-RoundedMenu $dd 8 }.GetNewClosure()
+          $dd.Add_Opened($handler)
+        } catch { Write-DebugLog ('submenu open hook error: ' + $_.Exception.Message) }
+      })
+      Set-MenuItemsTheme $it.DropDownItems $itemBg $bg $fg $dim $line $sel $renderer
     }
   }
+}
+
+function Set-LayeredMenu($menu, [double]$opacity) {
+  try {
+    $h = $menu.Handle
+    if ($h -eq [IntPtr]::Zero) { return }
+    $ex = [DshFishWin]::GetWindowLong($h, -20)
+    [void][DshFishWin]::SetWindowLong($h, -20, ($ex -bor 0x80000))
+    $alpha = [byte][Math]::Max(20, [Math]::Min(255, [int]($opacity * 255)))
+    [void][DshFishWin]::SetLayeredWindowAttributes($h, 0, $alpha, 2)
+    [void][DshFishWin]::SetWindowPos($h, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040)
+  } catch {
+    Write-DebugLog ('layered menu error: ' + $_.Exception.Message)
+  }
+}
+
+function Set-RoundedMenu($menu, [int]$radius = 8) {
+  try {
+    if ($null -eq $menu -or $menu.Width -le 0 -or $menu.Height -le 0) { return }
+    $w = $menu.Width; $h = $menu.Height; $d = $radius * 2
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddArc(0, 0, $d, $d, 180, 90)
+    $path.AddArc($w - $d - 1, 0, $d, $d, 270, 90)
+    $path.AddArc($w - $d - 1, $h - $d - 1, $d, $d, 0, 90)
+    $path.AddArc(0, $h - $d - 1, $d, $d, 90, 90)
+    $path.CloseFigure()
+    $menu.Region = New-Object System.Drawing.Region($path)
+    $path.Dispose()
+    Write-DebugLog ("rounded menu " + $menu.Width + "x" + $menu.Height)
+    if ($script:Material -eq 'glass') { Set-LayeredMenu $menu 0.70 } else { Set-LayeredMenu $menu 1.0 }
+  } catch { }
 }
 
 function Set-MenuTheme($menu, [string]$material) {
@@ -1233,19 +1373,21 @@ function Set-MenuTheme($menu, [string]$material) {
     $sel = [System.Drawing.Color]::FromArgb(220, 229, 242)
     $table = New-Object DshFishMenuColorsLight
   } elseif ($material -eq 'glass') {
-    $bg = [System.Drawing.Color]::FromArgb(233, 239, 247)
-    $fg = [System.Drawing.Color]::FromArgb(22, 33, 61)
-    $dim = [System.Drawing.Color]::FromArgb(94, 111, 140)
-    $line = [System.Drawing.Color]::FromArgb(183, 198, 221)
-    $sel = [System.Drawing.Color]::FromArgb(214, 226, 242)
+    $bg = [System.Drawing.Color]::FromArgb(78, 84, 120)
+    $fg = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    $dim = [System.Drawing.Color]::FromArgb(218, 222, 232)
+    $line = [System.Drawing.Color]::FromArgb(154, 163, 200)
+    $sel = [System.Drawing.Color]::FromArgb(102, 110, 154)
     $table = New-Object DshFishMenuColorsGlass
   }
   $renderer = New-Object DshFishRenderer -ArgumentList $table
   $renderer.ArrowColor = $fg
+  $renderer.Glass = ($material -eq 'glass')
   $menu.Renderer = $renderer
   $menu.BackColor = $bg
   $menu.ForeColor = $fg
-  Set-MenuItemsTheme $menu.Items $bg $fg $dim $line $sel $renderer
+  $itemBg = if ($material -eq 'glass') { [System.Drawing.Color]::Transparent } else { $bg }
+  Set-MenuItemsTheme $menu.Items $itemBg $bg $fg $dim $line $sel $renderer
 }
 
 function Add-ContextItem([string]$text, [scriptblock]$action, [bool]$enabled = $true) {
@@ -1274,7 +1416,7 @@ function New-DarkButton([string]$text, [int]$w, [scriptblock]$action) {
   $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 86, 140)
   $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(52, 72, 118)
   $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(64, 88, 140)
-  $b.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  $b.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
   $b.Cursor = [System.Windows.Forms.Cursors]::Hand
   $b.Add_Click($action)
   return $b
@@ -1318,7 +1460,7 @@ function Add-SizeRow {
   $lbl.Dock = [System.Windows.Forms.DockStyle]::Fill
   $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
   $lbl.ForeColor = [System.Drawing.Color]::FromArgb(200, 212, 245)
-  $lbl.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  $lbl.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
   [void]$panel.Controls.Add($lbl, 0, 0)
 
   $btnMinus = New-DarkButton '－' 30 { Apply-MascotScale ($script:Scale - 0.1) $true }
@@ -1434,6 +1576,17 @@ function Open-ConfigFile {
   try { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $script:ConfigPath + '"') | Out-Null } catch { }
 }
 
+function Get-WidgetVersion {
+  try {
+    $vf = Join-Path $script:AppDir 'version.json'
+    if (Test-Path -LiteralPath $vf) {
+      $v = (Get-Content -LiteralPath $vf -Raw -ErrorAction Stop | ConvertFrom-Json).version
+      if ($v -match '^\d+\.\d+\.\d+$') { return [string]$v }
+    }
+  } catch { }
+  return $script:Version
+}
+
 function Check-Update {
   $title = 'DSH 大肥鱼 · 检查更新'
   try {
@@ -1443,9 +1596,10 @@ function Check-Update {
       [void][System.Windows.MessageBox]::Show('还没有发布版本。', $title)
       return
     }
-    $cur = 'v' + $script:Version
+    $currentVersion = Get-WidgetVersion
+    $cur = 'v' + $currentVersion
     $isNew = $false
-    try { $isNew = ([version]($latest.TrimStart('v'))).CompareTo([version]$script:Version) -gt 0 } catch { }
+    try { $isNew = ([version]($latest.TrimStart('v'))).CompareTo([version]$currentVersion) -gt 0 } catch { }
     if ($isNew) {
       $r = [System.Windows.MessageBox]::Show(("发现新版本 $latest。`n`n当前版本 $cur`n`n是否打开下载页？"), $title, [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
       if ($r -eq [System.Windows.MessageBoxResult]::Yes) {
@@ -1640,6 +1794,7 @@ function Apply-Material {
 }
 
 function Show-ContextMenu {
+  Write-DebugLog 'show context menu'
   $script:Menu.Items.Clear()
   [void](Add-ContextItem '打开 DSH' { Open-Dsh })
   [void](Add-ContextItem '摸摸头' { Pet-Mascot })
@@ -1699,8 +1854,8 @@ function Show-ContextMenu {
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
   [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
-  try { Set-MenuTheme $script:Menu $script:Material } catch { }
-  try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { }
+  try { Set-MenuTheme $script:Menu $script:Material } catch { Write-DebugLog ('menu theme error: ' + $_.Exception.Message) }
+  try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { Write-DebugLog ('menu show error: ' + $_.Exception.Message) }
 }
 
 function Set-Material([string]$m) {
@@ -2143,6 +2298,7 @@ $script:Window.Add_Loaded({
     $script:TaskText.Text = '正在连接 DSH…'
     Show-Bubble
     if ($script:Material -eq 'white' -or $script:Material -eq 'glass') { Apply-Material }
+    Register-Hotkey
   } catch { }
 })
 $script:Window.Add_LocationChanged({
@@ -2150,6 +2306,7 @@ $script:Window.Add_LocationChanged({
   if ($null -eq $script:Drag) { Save-WindowPos }
 })
 $script:Window.Add_Closed({
+  Unregister-Hotkey
   try { Remove-Item -LiteralPath $script:PidPath -Force -ErrorAction SilentlyContinue } catch { }
   Stop-Core
   try { if ($null -ne $script:Tray) { $script:Tray.Visible = $false; $script:Tray.Dispose() } } catch { }
