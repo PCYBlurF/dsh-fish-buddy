@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; media-src 'self' file:; connect-src 'none';">
   <title>DSH 大肥鱼</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -22,6 +23,10 @@
       <div class="tail"></div>
     </div>
     <div id="pet" class="pet"><img id="sprite" alt="大肥鱼" draggable="false"></div>
+  </div>
+  <div id="celebrate" class="celebrate hidden">
+    <span class="check">✓</span>
+    <i></i><i></i><i></i><i></i><i></i>
   </div>
   <script src="renderer.js"></script>
 </body>

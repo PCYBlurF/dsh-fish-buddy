@@ -17,7 +17,7 @@ macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Elec
 ## 环境要求
 
 - macOS 12 或更高（Apple Silicon / Intel 都支持，Electron 会自动装对应架构）
-- Node.js 22+（推荐直接用 DSH 自带的 Node）
+- Node.js **22.15+**（zstd 解码需要；推荐直接用 DSH 自带的 Node）
 - 首次需要 `npm install` 安装 Electron（约 100 MB）
 
 ## 安装与启动

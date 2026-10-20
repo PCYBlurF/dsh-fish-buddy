@@ -35,6 +35,7 @@
   const task = $('task');
   const meta = $('meta');
   const pet = $('pet');
+  const celebrate = $('celebrate');
   const sprite = $('sprite');
   const chime = new Audio('../assets/chime.wav');
   function playChime() {
@@ -131,6 +132,7 @@
       setDot(DOT.idle);
       setBar(null);
       setSprite(idleFor > 25 ? 'sleep' : 'idle');
+      celebrate.classList.add('hidden');
       setBubbleVisible(idleFor <= 12);
       return;
     }
@@ -146,6 +148,20 @@
       setDot(DOT.error);
       setBar(null);
       setSprite('error');
+      celebrate.classList.add('hidden');
+      setBubbleVisible(true);
+      return;
+    }
+
+    if (phase === 'aborted') {
+      title.textContent = '任务已中止';
+      task.textContent = sessionTitle;
+      meta.textContent = '双击看模型余额';
+      count.textContent = '';
+      setDot('#F5A623');
+      setBar(null);
+      setSprite('idle');
+      celebrate.classList.add('hidden');
       setBubbleVisible(true);
       return;
     }
@@ -166,6 +182,7 @@
         setBar(null);
       }
       setSprite('celebrate');
+      celebrate.classList.remove('hidden');
       setBubbleVisible(now - endedAt <= 12000);
       return;
     }
@@ -196,6 +213,7 @@
     }
     setDot(DOT.working);
     setSprite('working');
+    celebrate.classList.add('hidden');
     setBubbleVisible(true);
   }
 
@@ -244,6 +262,7 @@
     setTimeout(() => {
       if (Date.now() < balanceUntil) return;
       balanceShowing = false;
+      if (wasCompact) document.body.classList.add('compact');
       if (lastState) renderState(lastState);
       else setBubbleVisible(false);
     }, 3100);

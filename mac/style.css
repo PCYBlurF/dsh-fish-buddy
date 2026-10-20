@@ -220,3 +220,49 @@ body.compact .bar {
 body.compact .bubble {
   padding-bottom: 9px;
 }
+
+/* 完成绿勾 + 星光 */
+.celebrate {
+  position: fixed;
+  right: 22px;
+  bottom: 24px;
+  width: 34px;
+  height: 34px;
+  pointer-events: none;
+  z-index: 5;
+}
+.celebrate.hidden { display: none; }
+.celebrate .check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #3DDC97;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.celebrate i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #FFD86B;
+  opacity: 0;
+  animation: star 1.4s ease-out infinite;
+}
+.celebrate i:nth-child(2) { animation-delay: 0s; --dx: -46px; --dy: -28px; }
+.celebrate i:nth-child(3) { animation-delay: 0.18s; --dx: 44px; --dy: -32px; }
+.celebrate i:nth-child(4) { animation-delay: 0.36s; --dx: -34px; --dy: 36px; }
+.celebrate i:nth-child(5) { animation-delay: 0.54s; --dx: 38px; --dy: 30px; }
+.celebrate i:nth-child(6) { animation-delay: 0.72s; --dx: 0; --dy: -48px; }
+@keyframes star {
+  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.1); opacity: 0; }
+}
