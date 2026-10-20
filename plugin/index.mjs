@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DSH 大肥鱼 · 启动插件
  *
  * DSH 启动时把桌面上的鲸鱼娘挂件拉起来（已运行则挂件自己会忽略重复启动）。
@@ -46,8 +46,33 @@ export function apply(ctx, config = {}) {
 
     const home = process.env.DSH_HOME || join(homedir(), '.dsh');
     const widgetDir = (config && config.widgetDir) || join(home, 'fish-buddy');
-    const vbs = join(widgetDir, 'bin', 'fish-widget.vbs');
 
+    if (process.platform === 'darwin') {
+      const macDir = join(widgetDir, 'mac');
+      const electron = join(macDir, 'node_modules', '.bin', 'electron');
+      if (!existsSync(electron)) {
+        logWarn(ctx, `macOS 版依赖未安装：请在 ${macDir} 下运行 ./install-mac.sh 或 npm install`);
+        return;
+      }
+      const child = spawn(electron, [macDir], {
+        detached: true,
+        stdio: 'ignore',
+        cwd: macDir,
+      });
+      child.on('error', (error) => {
+        logWarn(ctx, `启动 macOS 版挂件失败：${error.message}`);
+      });
+      child.unref();
+      logInfo(ctx, 'DSH 大肥鱼（macOS）已在桌面待命');
+      return;
+    }
+
+    if (process.platform !== 'win32') {
+      logWarn(ctx, `当前平台 ${process.platform} 暂不支持挂件`);
+      return;
+    }
+
+    const vbs = join(widgetDir, 'bin', 'fish-widget.vbs');
     if (!existsSync(vbs)) {
       logWarn(ctx, `找不到挂件启动器：${vbs}`);
       return;

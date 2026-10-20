@@ -4,6 +4,7 @@
   <p>常驻桌面的 Q 版 DeepSeek「鲸鱼娘」，实时显示 DeepSeek Harness 的任务进度；任务完成时她会跳起来、放星光、响一声并弹 Windows 通知。</p>
   <p>
     <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11-4D6BFE">
+    <img alt="platform" src="https://img.shields.io/badge/platform-macOS-111111">
     <img alt="license" src="https://img.shields.io/badge/license-MIT-3DDC97">
     <img alt="powershell" src="https://img.shields.io/badge/PowerShell-5.1-5391FE">
     <img alt="dsh" src="https://img.shields.io/badge/DeepSeek%20Harness-Desktop-8FA6FF">
@@ -24,6 +25,7 @@
 - **互动**：拖动、悬停放大、单击展开详情、双击查看当前模型余额、摸摸头、托盘菜单、滚轮收起。
 - **自动恢复**：后端心跳超时自动重启；不依赖 DSH API、端口或登录态，只读本机会话文件。
 - **透明置顶**：按像素命中，透明区域鼠标穿透，不挡桌面操作。
+- **macOS 版**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存都已实现。详见 [`mac/README.md`](mac/README.md)。
 
 <p align="center">
   <img src="assets/screenshots/working.png" alt="工作中" width="46%">
@@ -74,6 +76,20 @@ stop-fish.cmd    :: 停止
 ### 关于 Node
 
 挂件优先使用 DSH 自带的 `~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin/node.exe`；找不到时回退到 `PATH` 里的 `node`。
+
+## macOS 版
+
+WPF 只能在 Windows 上运行，macOS 使用独立的 Electron 挂件：
+
+```bash
+cd mac
+./install-mac.sh
+./start-mac.command
+```
+
+它复用同一份 `fish-core.mjs`、`state.json` 和 `assets/whale` 素材；支持拖动、位置保存、三档材质、双击查余额和原生右键菜单。DSH 插件在 macOS 上会自动拉起 `mac/node_modules/.bin/electron`。
+
+详细安装、登录自启和已知差异见 [`mac/README.md`](mac/README.md)。
 
 ## 使用
 

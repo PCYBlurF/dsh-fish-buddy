@@ -21,3 +21,8 @@ desktop.ini
 
 # node
 node_modules/
+
+mac/node_modules/
+mac/ui-mac.json
+mac/autostart.log
+mac/package-lock.json
