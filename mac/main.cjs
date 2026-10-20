@@ -2,7 +2,8 @@ const { app, BrowserWindow, ipcMain, Menu, shell, screen, Tray, nativeImage, Not
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+const lib = require('./lib.cjs');
+const { spawn, spawnSync, execFile } = require('child_process');
 
 const MAC = __dirname;
 const ROOT = path.resolve(MAC, '..');
@@ -15,7 +16,6 @@ const README = path.join(MAC, 'README.md');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const W = 360;
 const H = 430;
-function heightForScale(scale) { return Math.round(H + (Number(scale) - 1) * 270); }
 
 let win = null;
 let tray = null;
@@ -26,6 +26,7 @@ let saveTimer = null;
 let pollTimer = null;
 let hitRects = [];
 let hitTimer = null;
+let coreTimer = null;
 let ignoreMouse = true;
 
 function readJson(file, fallback) {
@@ -41,25 +42,11 @@ function writeJson(file, value) {
 }
 
 const CONFIG_JSON = readJson(CONFIG, {});
-let ui = readJson(UI, { left: null, top: null, material: 'white', scale: Number(CONFIG_JSON.scale) || 0.9, notify: CONFIG_JSON.notify !== false, sound: CONFIG_JSON.sound !== false, topmost: true, pinned: '' });
-if (!ui || typeof ui !== 'object') ui = { left: null, top: null, material: 'white', scale: 0.9 };
-if (!['default', 'white', 'glass'].includes(ui.material)) ui.material = 'white';
-if (typeof ui.scale !== 'number') ui.scale = Number(CONFIG_JSON.scale) || 0.9;
-if (typeof ui.notify !== 'boolean') ui.notify = CONFIG_JSON.notify !== false;
-if (typeof ui.sound !== 'boolean') ui.sound = CONFIG_JSON.sound !== false;
-if (typeof ui.notify !== 'boolean') ui.notify = true;
-if (typeof ui.sound !== 'boolean') ui.sound = true;
-if (typeof ui.topmost !== 'boolean') ui.topmost = true;
-if (typeof ui.pinned !== 'string') ui.pinned = '';
+let ui = lib.mergeUiConfig(readJson(UI, null), CONFIG_JSON);
 function saveUi() { writeJson(UI, ui); }
 
 function resolveNode() {
-  const candidates = [
-    process.env.DSH_NODE,
-    path.join(DSH_HOME, 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'node', 'bin', 'node'),
-    '/opt/homebrew/bin/node',
-    '/usr/local/bin/node',
-  ];
+  const candidates = lib.nodeCandidates(DSH_HOME, process.env, process.execPath);
   for (const candidate of candidates) {
     if (candidate && fs.existsSync(candidate)) return candidate;
   }
@@ -127,18 +114,11 @@ function poll() {
   if (state) {
     if (ui.pinned) {
       const match = (state.sessions || []).find((item) => item.id === ui.pinned);
-      if (match) {
-        let phase = 'idle';
-        if (match.running) phase = 'working';
-        else if (match.errorMessage) phase = 'error';
-        else if (match.lastTurn && match.lastTurn.reason === 'error') phase = 'error';
-        else if (match.lastTurn && match.lastTurn.reason === 'aborted') phase = 'aborted';
-        else if (match.lastTurn && match.lastTurn.reason === 'completed') phase = 'done';
-        state = { ...state, session: match, phase };
-      }
+      if (match) state = { ...state, session: match };
     }
-    if (state.session && !state.session.running && state.session.lastTurn && state.session.lastTurn.reason === 'aborted') {
-      state = { ...state, phase: 'aborted' };
+    if (state.session) {
+      const phase = lib.phaseForSession(state.session);
+      if (phase !== 'working' || !state.phase) state = { ...state, phase };
     }
     lastState = state;
     const completion = state.completion;
@@ -266,7 +246,7 @@ function savePosition() {
 }
 
 function visibleOnSomeDisplay(x, y) {
-  const h = heightForScale(ui.scale);
+  const h = lib.heightForScale(ui.scale);
   return screen.getAllDisplays().some((display) => {
     const area = display.workArea;
     return x + W > area.x + 40 && x < area.x + area.width - 40 && y + h > area.y + 40 && y < area.y + area.height - 40;
@@ -296,7 +276,7 @@ function updateHitTest() {
 
 function createWindow() {
   const area = screen.getPrimaryDisplay().workArea;
-  const winH = heightForScale(ui.scale);
+  const winH = lib.heightForScale(ui.scale);
   let x = Number(ui.left);
   let y = Number(ui.top);
   if (!Number.isFinite(x) || !Number.isFinite(y) || !visibleOnSomeDisplay(x, y)) {
@@ -338,10 +318,38 @@ function createWindow() {
   pollTimer = setInterval(poll, 500);
   clearInterval(hitTimer);
   hitTimer = setInterval(updateHitTest, 60);
+  clearInterval(coreTimer);
+  coreTimer = setInterval(ensureCore, 5000);
 }
 
 function sendCommand(command, value) {
   if (win && !win.isDestroyed()) win.webContents.send('command', command, value);
+}
+
+function runDoctor() {
+  const node = resolveNode();
+  const env = { ...process.env };
+  if (node === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
+  execFile(node, [path.join(ROOT, 'bin', 'doctor.mjs')], { cwd: ROOT, env, timeout: 20000 }, (error, stdout, stderr) => {
+    const text = [stdout, stderr, error ? `exit=${error.code || 'error'}` : ''].filter(Boolean).join('\n');
+    try {
+      dialog.showMessageBox({
+        title: 'DSH 大肥鱼 · 自检',
+        message: 'doctor 结果',
+        detail: text.slice(0, 4000),
+        buttons: ['OK'],
+      });
+    } catch { /* ignore */ }
+  });
+}
+
+function ensureCore() {
+  if (coreProc && coreProc.exitCode === null && !coreProc.killed) return;
+  try {
+    const pid = parseInt(fs.readFileSync(path.join(ROOT, 'core.pid'), 'utf8'), 10);
+    if (pid) { process.kill(pid, 0); return; }
+  } catch { /* stale */ }
+  startCore();
 }
 
 function restartCore() {
@@ -370,7 +378,7 @@ function menuTemplate() {
     if (win) {
       const [x, y] = win.getPosition();
       const [, h] = win.getSize();
-      const nh = heightForScale(value);
+      const nh = lib.heightForScale(value);
       win.setBounds({ x, y: y + h - nh, width: W, height: nh });
     }
   };
@@ -418,7 +426,7 @@ function menuTemplate() {
       click: () => {
         if (!win) return;
         const area = screen.getPrimaryDisplay().workArea;
-        win.setPosition(Math.round(area.x + area.width - W - 16), Math.round(area.y + area.height - heightForScale(ui.scale) - 6));
+        win.setPosition(Math.round(area.x + area.width - W - 16), Math.round(area.y + area.height - lib.heightForScale(ui.scale) - 6));
       },
     },
     { label: '打开说明', click: () => shell.openPath(README) },
@@ -428,6 +436,8 @@ function menuTemplate() {
         { label: '总在最前：' + (ui.topmost ? '开' : '关'), click: () => { ui.topmost = !ui.topmost; saveUi(); if (win) win.setAlwaysOnTop(!!ui.topmost, 'floating'); } },
         { label: '桌面通知：' + (ui.notify ? '开' : '关'), click: () => { ui.notify = !ui.notify; saveUi(); } },
         { label: '提示音：' + (ui.sound ? '开' : '关'), click: () => { ui.sound = !ui.sound; saveUi(); } },
+        { type: 'separator' },
+        { label: '运行自检 / doctor', click: runDoctor },
         { type: 'separator' },
         { label: '重启后端', click: restartCore },
         { label: '打开日志', click: () => shell.openPath(path.join(ROOT, 'logs')) },
@@ -477,10 +487,7 @@ ipcMain.handle('bootstrap', () => ({
 ipcMain.handle('balance', () => queryBalance());
 ipcMain.on('hit-rects', (_event, rects) => {
   if (!Array.isArray(rects)) return;
-  hitRects = rects
-    .filter((rect) => Array.isArray(rect) && rect.length === 4 && rect.every((value) => Number.isFinite(Number(value))))
-    .slice(0, 6)
-    .map((rect) => rect.map(Number));
+  hitRects = lib.sanitizeHitRects(rects);
   updateHitTest();
 });
 ipcMain.on('menu', () => showMenu());
@@ -508,7 +515,7 @@ ipcMain.on('save-ui', (_event, patch) => {
     if (win) {
       const [x, y] = win.getPosition();
       const [, h] = win.getSize();
-      const nh = heightForScale(ui.scale);
+      const nh = lib.heightForScale(ui.scale);
       win.setBounds({ x, y: y + h - nh, width: W, height: nh });
     }
   }
@@ -536,6 +543,7 @@ if (!gotLock) {
     stopCore();
     clearInterval(pollTimer);
     clearInterval(hitTimer);
+    clearInterval(coreTimer);
   });
   app.on('window-all-closed', () => app.quit());
 }

@@ -1,0 +1,31 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Unit tests
+        run: node --test test/*.test.cjs
+      - name: Syntax checks
+        shell: bash
+        run: |
+          node --check mac/main.cjs
+          node --check mac/preload.cjs
+          node --check mac/renderer.js
+          node --check mac/lib.cjs
+          node --check bin/fish-core.mjs
+          node --check bin/doctor.mjs
+          node --check plugin/index.mjs

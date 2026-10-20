@@ -13,6 +13,8 @@ macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Elec
 - 会话子菜单：自动 / 最近任务，可固定
 - 设置：总在最前、桌面通知、提示音、重启后端、打开日志/目录/配置文件、登录自启
 - 任务完成时 macOS 系统通知 + 提示音
+- 后端 watchdog：fish-core 退出后自动拉起
+- 自检 `doctor`、卸载脚本和离线单元测试
 - 拖动角色/气泡移动窗口，位置保存在 `mac/ui-mac.json`
 
 ## 环境要求
@@ -38,6 +40,34 @@ npm start
 ```
 
 启动后角色在屏幕右下角。没有 Dock 图标；菜单栏右上角会出现大肥鱼图标（macOS 的“托盘”），可以从那里显示/隐藏、退出，也可以右键角色退出。
+
+### 自检
+
+```bash
+cd mac
+./doctor.sh
+```
+
+或右键 → **设置 → 运行自检 / doctor**。会检查 Node 22.15+、zstd、DSH_HOME、会话、API Key、state.json、fish-core 和 Electron 依赖。
+
+### 卸载
+
+```bash
+cd mac
+./uninstall-mac.sh
+# 连 Electron 依赖一起删除：
+./uninstall-mac.sh --purge
+```
+
+会退出应用、移除登录自启 LaunchAgent，并清理 `ui-mac.json` / `core.pid`。
+
+### 测试
+
+```bash
+node --test test/*.test.cjs
+```
+
+GitHub Actions 在 `.github/workflows/test.yml` 中跑同样的测试和三平台语法检查。
 
 ## 与 DSH 一起用
 

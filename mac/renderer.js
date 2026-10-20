@@ -186,7 +186,8 @@
       setBar(null);
       setSprite('error');
       celebrate.classList.add('hidden');
-      setBubbleVisible(true);
+      const errorEndedAt = (session.lastTurn && session.lastTurn.endedAt) || session.lastEventAt || now;
+      setBubbleVisible(now - errorEndedAt <= 12000);
       return;
     }
 
@@ -199,7 +200,8 @@
       setBar(null);
       setSprite('idle');
       celebrate.classList.add('hidden');
-      setBubbleVisible(true);
+      const abortedEndedAt = (session.lastTurn && session.lastTurn.endedAt) || session.lastEventAt || now;
+      setBubbleVisible(now - abortedEndedAt <= 12000);
       return;
     }
 

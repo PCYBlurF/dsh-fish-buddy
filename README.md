@@ -23,9 +23,9 @@
 - **多会话**：Windows 右键菜单 / macOS「会话」子菜单列出最近会话（`●` 运行中 / `○` 已结束），可固定显示某一个；默认跟随最近任务。
 - **自定义大小**：Windows 70%–140%，角色、气泡、特效一起缩放；macOS 80% / 100% / 120%，窗口高度随角色缩放自动适配。
 - **互动**：拖动、悬停放大、单击展开详情、双击查看当前模型余额、摸摸头、托盘菜单（Windows）/ 菜单栏图标 + 右键菜单（macOS）、滚轮收起（Windows）。
-- **自动恢复**：后端心跳超时自动重启；不依赖 DSH API、端口或登录态，只读本机会话文件。
+- **自动恢复**：后端进程退出后自动重启（Windows/macOS）；不依赖 DSH API、端口或登录态，只读本机会话文件。
 - **透明置顶**：Windows 版按像素命中；macOS 版按角色/气泡矩形动态穿透（矩形内透明像素仍会拦截）。
-- **macOS 版**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存、菜单栏图标都已实现。详见 [`mac/README.md`](mac/README.md)。
+- **macOS 版**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存、菜单栏图标、自检和卸载都已实现。详见 [`mac/README.md`](mac/README.md)。
 
 <p align="center">
   <img src="assets/screenshots/working.png" alt="工作中" width="46%">
