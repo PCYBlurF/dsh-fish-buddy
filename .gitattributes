@@ -12,3 +12,11 @@
 *.json text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
+
+mac/*.sh text eol=lf
+mac/*.command text eol=lf
+mac/*.js text eol=lf
+mac/*.cjs text eol=lf
+mac/*.css text eol=lf
+mac/*.html text eol=lf
+mac/README.md text eol=lf
