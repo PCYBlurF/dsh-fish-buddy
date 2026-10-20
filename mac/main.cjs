@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, screen, Tray, nativeImage } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,6 +15,7 @@ const W = 360;
 const H = 430;
 
 let win = null;
+let tray = null;
 let coreProc = null;
 let drag = null;
 let lastState = null;
@@ -237,8 +238,7 @@ function sendCommand(command, value) {
   if (win && !win.isDestroyed()) win.webContents.send('command', command, value);
 }
 
-function showMenu() {
-  if (!win) return;
+function menuTemplate() {
   const material = ui.material || 'white';
   const scale = ui.scale || 0.9;
   const setMaterial = (value) => {
@@ -251,7 +251,7 @@ function showMenu() {
     saveUi();
     sendCommand('scale', value);
   };
-  const template = [
+  return [
     { label: '打开 DSH', click: () => { const state = lastState || readState() || {}; if (state.dshUrl) shell.openExternal(String(state.dshUrl)); } },
     { label: '摸摸头', click: () => sendCommand('pet') },
     { type: 'separator' },
@@ -284,7 +284,33 @@ function showMenu() {
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
   ];
-  Menu.buildFromTemplate(template).popup({ window: win });
+}
+
+function showMenu() {
+  if (!win) return;
+  Menu.buildFromTemplate(menuTemplate()).popup({ window: win });
+}
+
+function toggleWindow() {
+  if (!win) return;
+  if (win.isVisible()) win.hide();
+  else { win.show(); win.focus(); }
+}
+
+function createTray() {
+  try {
+    const image = nativeImage.createFromPath(path.join(MAC, 'trayTemplate.png'));
+    if (process.platform === 'darwin') image.setTemplateImage(true);
+    tray = new Tray(image);
+    tray.setToolTip('DSH 大肥鱼');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '显示 / 隐藏大肥鱼', click: toggleWindow },
+      { type: 'separator' },
+      ...menuTemplate(),
+    ]));
+  } catch (error) {
+    console.error('tray', error);
+  }
 }
 
 ipcMain.handle('bootstrap', () => ({
@@ -332,6 +358,7 @@ if (!gotLock) {
     if (!win) createWindow();
   });
   app.on('before-quit', () => {
+    try { if (tray) tray.destroy(); } catch { /* ignore */ }
     savePosition();
     stopCore();
     clearInterval(pollTimer);

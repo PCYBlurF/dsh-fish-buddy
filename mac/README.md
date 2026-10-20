@@ -7,6 +7,7 @@ macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Elec
 - 复用 `bin/fish-core.mjs` 读取 `~/.dsh` 会话日志并生成 `state.json`
 - 任务进度气泡、完成庆祝、三种材质
 - 双击角色查询当前模型 provider 余额（约 3 秒）
+- 菜单栏图标（macOS 的托盘）：显示/隐藏、打开 DSH、摸摸头、材质、大小、重置位置、说明、退出
 - 右键菜单：打开 DSH、摸摸头、材质、大小、重置位置、退出
 - 拖动角色/气泡移动窗口，位置保存在 `mac/ui-mac.json`
 
@@ -32,7 +33,7 @@ npm install
 npm start
 ```
 
-启动后角色在屏幕右下角。没有 Dock 图标，退出请右键角色 → **退出**。
+启动后角色在屏幕右下角。没有 Dock 图标；菜单栏右上角会出现大肥鱼图标（macOS 的“托盘”），可以从那里显示/隐藏、退出，也可以右键角色退出。
 
 ## 与 DSH 一起用
 
@@ -86,6 +87,7 @@ rm ~/Library/LaunchAgents/com.dsh.fishbuddy.plist
 - `preload.cjs`：`contextBridge` API
 - `renderer.js` / `style.css` / `index.html`：悬浮窗 UI
 - `ui-mac.json`：窗口位置、材质、大小（首次运行自动生成）
+- `trayTemplate.png` / `trayTemplate@2x.png`：菜单栏模板图标
 - `../state.json`：由 `fish-core.mjs` 写入
 - `../logs/`：后端日志
 
