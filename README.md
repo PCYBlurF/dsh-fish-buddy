@@ -79,6 +79,9 @@ stop-fish.cmd    :: 停止
 
 ## macOS 版
 
+> macOS 首次运行可能提示 Electron 被 Gatekeeper 拦截；这是 npm Electron 的签名/隔离问题，处理方式见 [`mac/README.md`](mac/README.md#macos-拦截-electron--包含恶意软件)。
+
+
 WPF 只能在 Windows 上运行，macOS 使用独立的 Electron 挂件：
 
 ```bash

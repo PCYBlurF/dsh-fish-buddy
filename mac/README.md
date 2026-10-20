@@ -91,6 +91,48 @@ rm ~/Library/LaunchAgents/com.dsh.fishbuddy.plist
 - `../state.json`：由 `fish-core.mjs` 写入
 - `../logs/`：后端日志
 
+## macOS 拦截 Electron / “包含恶意软件”
+
+首次运行如果弹出：
+
+> 已阻止恶意软件并移到废纸篓
+> 未打开 “Electron ... .app”，因其包含恶意软件
+
+被拦的是 npm 安装的 **Electron.app**，不是大肥鱼代码。常见原因：
+
+- Electron 被 Gatekeeper 隔离（`com.apple.quarantine`）
+- 从国内镜像/第三方下载的 Electron 被重打包，签名丢失
+- 应用没有 Developer ID 签名/公证
+
+先确认来源和签名：
+
+```bash
+cd mac
+node -p "require('electron/package.json').version"
+codesign -dv --verbose=2 node_modules/electron/dist/Electron.app
+```
+
+签名 Authority 应该是 Electron 官方（Electron / GitHub）。如果显示 `not signed` 或来源不明：
+
+```bash
+npm config set registry https://registry.npmjs.org/
+unset ELECTRON_MIRROR
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+```
+
+如果签名正常、只是被隔离（本地测试）：
+
+```bash
+./fix-macos-gatekeeper.sh
+```
+
+它会移除 quarantine 并做 ad-hoc 签名，然后重新运行 `./start-mac.command`。
+
+> 不要用 `spctl --master-disable` 全局关闭 Gatekeeper。  
+> 正式分发给别人需要 Apple Developer ID 签名 + 公证；现在这种 npm Electron 方式只适合自己测试。
+
 ## 已知差异 / 限制
 
 - 透明玻璃是 **20% 白 + 白色描边** 的近似；macOS 的透明窗口同样没有真正的桌面 `backdrop-filter` 模糊（和 Windows 版一致）。
