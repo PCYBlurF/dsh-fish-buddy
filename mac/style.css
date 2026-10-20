@@ -1,0 +1,211 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 12px 8px;
+}
+
+.bubble {
+  position: relative;
+  width: 330px;
+  max-width: calc(100vw - 24px);
+  margin: 0 auto 10px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  padding: 12px 14px 11px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.bubble-inner { position: relative; z-index: 1; }
+
+.bubble.hidden {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7C93FF;
+  flex: 0 0 auto;
+  margin-right: 9px;
+  transition: background 160ms ease;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.count {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  font-size: 11.5px;
+  opacity: 0.9;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  margin-top: 10px;
+  overflow: hidden;
+  display: none;
+}
+
+.bar.show { display: block; }
+
+.bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: #6F8CFF;
+  transition: width 220ms ease, background 160ms ease;
+}
+
+.task {
+  margin-top: 9px;
+  font-size: 12.5px;
+  line-height: 17px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.meta {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.95;
+}
+
+/* 气泡小尾巴 */
+.tail {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 0;
+  height: 0;
+  margin-left: -9px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 10px solid #F4F8FC;
+  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.16));
+}
+
+/* 深蓝色 */
+body.mat-default .bubble {
+  background: linear-gradient(160deg, #1B2548 0%, #101A34 55%, #0B1226 100%);
+  border-color: rgba(122, 145, 255, 0.38);
+}
+body.mat-default .title { color: #F2F6FF; }
+body.mat-default .task { color: #D7E0FF; }
+body.mat-default .meta { color: #7F90C4; }
+body.mat-default .count { color: #8FA3D9; }
+body.mat-default .bar { background: #22305C; }
+body.mat-default .tail { border-top-color: #0B1226; }
+
+/* 白色磨砂 */
+body.mat-white .bubble {
+  background: #F4F8FC;
+  border-color: #AFBDD2;
+}
+body.mat-white .title { color: #16213D; }
+body.mat-white .task { color: #2B3855; }
+body.mat-white .meta { color: #5E6F8C; }
+body.mat-white .count { color: #52627F; }
+body.mat-white .bar { background: #DCE5F2; }
+
+/* 透明玻璃：20% 白 */
+body.mat-glass .bubble {
+  background: rgba(242, 246, 251, 0.2);
+  border-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(2px);
+}
+body.mat-glass .title,
+body.mat-glass .task {
+  color: #FFFFFF;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+body.mat-glass .meta,
+body.mat-glass .count {
+  color: #E4EBFF;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+body.mat-glass .bar { background: rgba(255, 255, 255, 0.25); }
+body.mat-glass .tail { border-top-color: rgba(242, 246, 251, 0.6); }
+
+/* 鲸鱼娘 */
+.pet {
+  width: calc(270px * var(--scale, 0.9));
+  height: calc(270px * var(--scale, 0.9));
+  max-width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: auto;
+  transition: transform 160ms ease;
+  filter: drop-shadow(0 10px 10px rgba(0, 0, 0, 0.28));
+  transform-origin: 50% 100%;
+  animation: bob 3.4s ease-in-out infinite;
+}
+
+.pet img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pet:hover { transform: scale(1.04); }
+
+.pet.hop { animation: hop 520ms ease; }
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes hop {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-14px) scale(1.03); }
+  60% { transform: translateY(-4px) scale(0.99); }
+  100% { transform: translateY(0) scale(1); }
+}
