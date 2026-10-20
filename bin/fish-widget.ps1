@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.1'
+$script:Version = '0.1.2'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -453,20 +453,26 @@ $defaultTop = $script:WorkArea.Bottom - $winH - 6
 
 $initialLeft = $defaultLeft
 $initialTop = $defaultTop
+$restored = $false
 try {
   if ($null -ne $script:Ui.left -and $null -ne $script:Ui.top) {
     $l = [double]$script:Ui.left
     $t = [double]$script:Ui.top
-    if ($l -gt ($script:WorkArea.Left - 300) -and $l -lt ($script:WorkArea.Right + 300) -and
-        $t -gt ($script:WorkArea.Top - 300) -and $t -lt ($script:WorkArea.Bottom + 300)) {
+    # 虚拟桌面（含多显示器）里至少还要露出一部分，才按关闭前的原坐标恢复；
+    # 不强行把右边缘贴回屏幕内，避免每次启动都往左挪。
+    $v = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    if (($l + $winW) -gt ($v.Left + 40) -and $l -lt ($v.Right - 40) -and
+        ($t + $winH) -gt ($v.Top + 40) -and $t -lt ($v.Bottom - 40)) {
       $initialLeft = $l
       $initialTop = $t
+      $restored = $true
     }
   }
 } catch { }
-# 保证整个人偶在屏幕内（换形象后窗口更高，旧坐标可能越界）
-$initialLeft = [Math]::Max($script:WorkArea.Left, [Math]::Min($initialLeft, $script:WorkArea.Right - $winW))
-$initialTop = [Math]::Max($script:WorkArea.Top, [Math]::Min($initialTop, $script:WorkArea.Bottom - $winH))
+if (-not $restored) {
+  $initialLeft = [Math]::Max($script:WorkArea.Left, [Math]::Min($initialLeft, $script:WorkArea.Right - $winW))
+  $initialTop = [Math]::Max($script:WorkArea.Top, [Math]::Min($initialTop, $script:WorkArea.Bottom - $winH))
+}
 
 $script:Window.Left = $initialLeft
 $script:Window.Top = $initialTop
@@ -2022,12 +2028,12 @@ $script:Window.Add_LocationChanged({
 })
 $script:Window.Add_Closed({
   try { Remove-Item -LiteralPath $script:PidPath -Force -ErrorAction SilentlyContinue } catch { }
-  Save-WindowPos
   Stop-Core
   try { if ($null -ne $script:Tray) { $script:Tray.Visible = $false; $script:Tray.Dispose() } } catch { }
   try { $script:Mutex.ReleaseMutex() } catch { }
 })
 $script:Window.Add_Closing({
+  try { Save-WindowPos } catch { }
   try { $script:Tick.Stop() } catch { }
   try { $script:BlinkTimer.Stop() } catch { }
   try { $script:FrameTimer.Stop() } catch { }
