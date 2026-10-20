@@ -1,5 +1,8 @@
 # DSH 大肥鱼 · macOS 版
 
+> **状态：实验性，暂停研发。** 当前是 Electron 方案，体积、内存、Gatekeeper 和签名成本都偏高；代码保留，后续如恢复会优先考虑纯 Swift 或 Tauri。Windows 版是稳定维护平台。
+
+
 macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Electron** 重写了一个独立小应用：
 
 - 透明、无边框、总在最前的桌面悬浮窗

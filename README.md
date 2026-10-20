@@ -4,7 +4,7 @@
   <p>常驻桌面的 Q 版 DeepSeek「鲸鱼娘」，实时显示 DeepSeek Harness 的任务进度；任务完成时她会跳起来、放星光、响一声，并弹完成提醒（Windows 桌面通知 / macOS 完成气泡）。</p>
   <p>
     <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11-4D6BFE">
-    <img alt="platform" src="https://img.shields.io/badge/platform-macOS-111111">
+    <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20experimental-111111">
     <img alt="license" src="https://img.shields.io/badge/license-MIT-3DDC97">
     <img alt="powershell" src="https://img.shields.io/badge/PowerShell-5.1-5391FE">
     <img alt="dsh" src="https://img.shields.io/badge/DeepSeek%20Harness-Desktop-8FA6FF">
@@ -12,6 +12,15 @@
 </div>
 
 > 非官方同人项目，与 DeepSeek 无隶属关系。「鲸鱼娘」是社区同人拟人形象。
+
+## 平台状态
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| Windows | **稳定维护** | WPF 挂件，主要开发平台 |
+| macOS | **实验性，暂停研发** | Electron 方案体积/内存/签名成本高；代码保留，后续可能换纯 Swift 或 Tauri |
+
+macOS 版不再承诺双击即用；历史版本说明已合并到 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ## 功能
 
@@ -25,7 +34,7 @@
 - **互动**：拖动、悬停放大、单击展开详情、双击查看当前模型余额、摸摸头、托盘菜单（Windows）/ 菜单栏图标 + 右键菜单（macOS）、滚轮收起（Windows）。
 - **自动恢复**：后端进程退出后自动重启（Windows/macOS）；不依赖 DSH API、端口或登录态，只读本机会话文件。
 - **透明置顶**：Windows 版按像素命中；macOS 版按角色/气泡矩形动态穿透（矩形内透明像素仍会拦截）。
-- **macOS 版**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存、菜单栏图标、自检和卸载都已实现。详见 [`mac/README.md`](mac/README.md)。
+- **macOS 版（实验性，暂停）**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存、菜单栏图标、自检和卸载都已实现，但不再继续研发。详见 [`mac/README.md`](mac/README.md)。
 
 <p align="center">
   <img src="assets/screenshots/working.png" alt="工作中" width="46%">
@@ -38,7 +47,7 @@
 
 - Windows 10 / 11，或 macOS 12+
 - 已安装并启动过 **DSH Desktop**（挂件复用它的 Node 运行时和 desktop profile）
-- Windows 需要 PowerShell 5.1（系统自带）；macOS 版需要 Node.js 22+（可用 DSH 自带 Node）
+- Windows 需要 PowerShell 5.1（系统自带）；macOS 版需要 Node.js 22.15+（可用 DSH 自带 Node）
 
 ### 方式一：克隆到 DSH 默认目录（推荐）
 
@@ -78,6 +87,9 @@ stop-fish.cmd    :: 停止
 挂件优先使用 DSH 自带的 `~/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin/node.exe`；找不到时回退到 `PATH` 里的 `node`。
 
 ## macOS 版
+
+> **状态：实验性，暂停研发。** Electron 方案体积、内存和签名成本都偏高；代码保留，后续如恢复会优先考虑纯 Swift 或 Tauri。
+
 
 > macOS 首次运行可能提示 Electron 被 Gatekeeper 拦截；这是 npm Electron 的签名/隔离问题，处理方式见 [`mac/README.md`](mac/README.md#macos-拦截-electron--包含恶意软件)。
 
@@ -144,7 +156,7 @@ cd mac
 - 后端每 600ms 写一次 `state.json` 作为心跳；超过 9 秒没更新时挂件显示「正在重新连接…」并自动重启后端。
 - 后端崩溃会被自动拉起（最多 5 次），原因记录在 `logs/widget.log`。
 
-macOS 版用菜单栏图标代替托盘；滚轮收起暂未实现。右键角色同样有打开 DSH、摸摸头、会话、详情、提醒音、材质、大小、重置位置、说明和退出。
+macOS 版用菜单栏图标代替托盘；滚轮收起暂未实现。右键角色同样有打开 DSH、摸摸头、会话、详情、提醒音、材质、大小、重置位置、说明和退出。macOS 研发已暂停，见上方平台状态。
 
 ## 角色状态
 
@@ -207,7 +219,7 @@ DSH 会话日志 (~/.dsh/sessions/**/session.v4.jsonl.zstd)
 ```
 
 - 只读本机会话日志，不联网、不依赖 DSH API / 端口 / 登录态。
-- Windows 版透明区域鼠标穿透；macOS 版整窗透明置顶；窗口按内容自适应。
+- Windows 版透明区域鼠标穿透；macOS 版按角色/气泡矩形动态穿透（矩形内透明像素仍会拦截）；窗口按内容自适应。
 - 插件只负责在 DSH 启动时叫醒挂件，重复启动会被单实例锁忽略。
 
 ## 项目结构
