@@ -1,6 +1,6 @@
 {
   "name": "dsh-fish-buddy-mac",
-  "version": "0.2.0",
+  "version": "0.1.11",
   "private": true,
   "description": "DSH 大肥鱼 macOS 悬浮挂件",
   "main": "main.cjs",
