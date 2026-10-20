@@ -1,7 +1,7 @@
 ﻿<div align="center">
   <img src="assets/screenshots/banner.png" alt="DSH 大肥鱼" width="100%">
   <h1>DSH 大肥鱼 · 桌面鲸鱼娘进度挂件</h1>
-  <p>常驻桌面的 Q 版 DeepSeek「鲸鱼娘」，实时显示 DeepSeek Harness 的任务进度；任务完成时她会跳起来、放星光、响一声并弹 Windows 通知。</p>
+  <p>常驻桌面的 Q 版 DeepSeek「鲸鱼娘」，实时显示 DeepSeek Harness 的任务进度；任务完成时她会跳起来、放星光、响一声，并弹完成提醒（Windows 桌面通知 / macOS 完成气泡）。</p>
   <p>
     <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11-4D6BFE">
     <img alt="platform" src="https://img.shields.io/badge/platform-macOS-111111">
@@ -19,12 +19,12 @@
 - **状态动画**：思考、工作、待命、打瞌睡、出错、完成都有对应的 Q 版帧动画。
 - **材质切换**：右键 → 材质 ▸ 深蓝色 / 白色磨砂 / 透明玻璃（20% 白）。
 - **余额**：双击角色查询 DSH 当前模型所属 provider 的余额，显示约 3 秒后恢复任务进度；再次双击可刷新。provider/model 从会话日志读取，缺省回退到 profile 的 `agent-default-model`。支持 DeepSeek、OpenRouter、Moonshot/Kimi；其他 provider 会提示暂无余额接口。API Key 读取对应环境变量或 `~/.dsh/.credentials.yaml`。
-- **完成提醒**：角色庆祝 + 星光 + 绿勾 + 提示音 + Windows 通知。
-- **多会话**：右键菜单列出最近会话（`●` 运行中 / `○` 已结束），可固定显示某一个；默认跟随最近任务。
+- **完成提醒**：角色庆祝 + 星光 + 绿勾 + 提示音 + Windows 桌面通知（macOS 版为完成气泡）。
+- **多会话（Windows）**：右键菜单列出最近会话（`●` 运行中 / `○` 已结束），可固定显示某一个；默认跟随最近任务。
 - **自定义大小**：70%–140%，角色、气泡、特效一起缩放，右下角锚定，记住选择。
-- **互动**：拖动、悬停放大、单击展开详情、双击查看当前模型余额、摸摸头、托盘菜单、滚轮收起。
+- **互动**：拖动、悬停放大、单击展开详情、双击查看当前模型余额、摸摸头、托盘菜单（Windows）/ 右键菜单（macOS）、滚轮收起（Windows）。
 - **自动恢复**：后端心跳超时自动重启；不依赖 DSH API、端口或登录态，只读本机会话文件。
-- **透明置顶**：按像素命中，透明区域鼠标穿透，不挡桌面操作。
+- **透明置顶**：Windows 版按像素命中、透明区域鼠标穿透；macOS 版为整窗透明置顶。
 - **macOS 版**：同一套 `fish-core.mjs` 和鲸鱼娘素材，用 Electron 重写悬浮窗；双击余额、三档材质、拖动/位置保存都已实现。详见 [`mac/README.md`](mac/README.md)。
 
 <p align="center">
@@ -36,9 +36,9 @@
 
 ### 环境要求
 
-- Windows 10 / 11
+- Windows 10 / 11，或 macOS 12+
 - 已安装并启动过 **DSH Desktop**（挂件复用它的 Node 运行时和 desktop profile）
-- PowerShell 5.1（系统自带）
+- Windows 需要 PowerShell 5.1（系统自带）；macOS 版需要 Node.js 22+（可用 DSH 自带 Node）
 
 ### 方式一：克隆到 DSH 默认目录（推荐）
 
@@ -100,7 +100,7 @@ cd mac
 | 单击 | 展开 / 收起详情 |
 | 双击 | 查看当前模型余额 |
 | 右键 | 打开 DSH / 摸摸头 / 大小 − 100% + / 材质 / 会话选择 / 详情 / 提醒音 / 重置位置 / 打开说明 / 设置 / 退出 |
-| 托盘图标 | 双击打开 DSH；右键摸摸头、自定义大小、放大/缩小、显示隐藏、重置位置、说明、提醒音、退出 |
+| 托盘图标（Windows） | 双击打开 DSH；右键摸摸头、自定义大小、放大/缩小、显示隐藏、重置位置、说明、提醒音、退出 |
 | 滚轮 | 展开 / 收起详情 |
 
 ### 大小
@@ -139,6 +139,8 @@ cd mac
 - 右键菜单的 **会话：…** 列表会显示 `自动（最近任务）` 和最近 4 个会话；点一下固定显示，选「自动」恢复跟随。
 - 后端每 600ms 写一次 `state.json` 作为心跳；超过 9 秒没更新时挂件显示「正在重新连接…」并自动重启后端。
 - 后端崩溃会被自动拉起（最多 5 次），原因记录在 `logs/widget.log`。
+
+macOS 版没有托盘图标和滚轮收起；右键菜单只有打开 DSH、摸摸头、材质、大小、重置位置、打开说明和退出。
 
 ## 角色状态
 
@@ -193,15 +195,15 @@ DSH 会话日志 (~/.dsh/sessions/**/session.v4.jsonl.zstd)
         │  fish-core.mjs：分帧 zstd 解压 + 增量解析
         ▼
    state.json（标题 / turn / todo / tool / goal / 完成事件）
-        │  fish-widget.ps1（WPF，400ms 轮询，状态帧动画）
+        │  fish-widget.ps1（WPF）/ mac/main.cjs（Electron），约 400ms 轮询
         ▼
-   桌面透明置顶窗（Q 版鲸鱼娘 + 气泡 + 托盘通知）
+   桌面透明置顶窗（Q 版鲸鱼娘 + 气泡；Windows 托盘/通知，macOS 右键菜单）
         ▲
         │  plugin/index.mjs（DSH 启动时拉起挂件）
 ```
 
 - 只读本机会话日志，不联网、不依赖 DSH API / 端口 / 登录态。
-- 透明区域鼠标穿透；窗口按内容自适应，不占用桌面操作。
+- Windows 版透明区域鼠标穿透；macOS 版整窗透明置顶；窗口按内容自适应。
 - 插件只负责在 DSH 启动时叫醒挂件，重复启动会被单实例锁忽略。
 
 ## 项目结构
@@ -220,6 +222,12 @@ DSH 会话日志 (~/.dsh/sessions/**/session.v4.jsonl.zstd)
 │  ├─ fish-widget.vbs             无控制台启动
 │  └─ stop-fish.ps1               停止脚本
 ├─ plugin/index.mjs               DSH 启动插件
+├─ mac/                           macOS Electron 版
+│  ├─ main.cjs / preload.cjs      主进程 / 桥接
+│  ├─ index.html / style.css      悬浮窗 UI
+│  ├─ renderer.js                 状态 / 余额 / 拖拽
+│  ├─ install-mac.sh              安装 Electron 依赖
+│  └─ start-mac.command           启动
 ├─ assets/
 │  ├─ whale/                      Q 版帧 + MIT LICENSE
 │  ├─ screenshots/                README 预览图
@@ -244,6 +252,8 @@ uninstall.cmd
 ```
 
 会停止挂件、备份并移除 `cordis.patch.yml` 里的插件段、清理开机自启；仓库目录保留，可自行删除。重启 DSH 后插件彻底消失。
+
+macOS 版：右键角色退出，若装过登录自启先 `launchctl unload ~/Library/LaunchAgents/com.dsh.fishbuddy.plist`，再删除仓库目录即可。
 
 ## 致谢
 
