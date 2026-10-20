@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell, screen, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, screen, Tray, nativeImage, Notification } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -11,6 +11,7 @@ const UI = path.join(MAC, 'ui-mac.json');
 const CORE = path.join(ROOT, 'bin', 'fish-core.mjs');
 const CONFIG = path.join(ROOT, 'config.json');
 const README = path.join(MAC, 'README.md');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const W = 360;
 const H = 430;
 
@@ -34,10 +35,14 @@ function writeJson(file, value) {
   }
 }
 
-let ui = readJson(UI, { left: null, top: null, material: 'white', scale: 0.9 });
+let ui = readJson(UI, { left: null, top: null, material: 'white', scale: 0.9, notify: true, sound: true, topmost: true, pinned: '' });
 if (!ui || typeof ui !== 'object') ui = { left: null, top: null, material: 'white', scale: 0.9 };
 if (!['default', 'white', 'glass'].includes(ui.material)) ui.material = 'white';
 if (typeof ui.scale !== 'number') ui.scale = 0.9;
+if (typeof ui.notify !== 'boolean') ui.notify = true;
+if (typeof ui.sound !== 'boolean') ui.sound = true;
+if (typeof ui.topmost !== 'boolean') ui.topmost = true;
+if (typeof ui.pinned !== 'string') ui.pinned = '';
 function saveUi() { writeJson(UI, ui); }
 
 function resolveNode() {
@@ -86,8 +91,33 @@ function readState() {
   return state;
 }
 
+let lastCompletionId = null;
+
 function poll() {
-  const state = readState();
+  let state = readState();
+  if (state) {
+    if (ui.pinned) {
+      const match = (state.sessions || []).find((item) => item.id === ui.pinned);
+      if (match) state = { ...state, session: match };
+    }
+    lastState = state;
+    const completion = state.completion;
+    if (completion && completion.id) {
+      if (!lastCompletionId) lastCompletionId = completion.id;
+      else if (completion.id !== lastCompletionId) {
+        lastCompletionId = completion.id;
+        if (ui.notify) {
+          try {
+            new Notification({
+              title: 'DSH 大肥鱼 · 任务完成',
+              body: String(completion.title || '任务完成啦！'),
+            }).show();
+          } catch { /* ignore */ }
+        }
+        if (ui.sound) sendCommand('chime');
+      }
+    }
+  }
   if (win && !win.isDestroyed()) win.webContents.send('state', state);
 }
 
@@ -221,7 +251,7 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  win.setAlwaysOnTop(true, 'floating');
+  win.setAlwaysOnTop(!!ui.topmost, 'floating');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(MAC, 'index.html'));
   win.once('ready-to-show', () => win.show());
@@ -238,6 +268,13 @@ function sendCommand(command, value) {
   if (win && !win.isDestroyed()) win.webContents.send('command', command, value);
 }
 
+function restartCore() {
+  stopCore();
+  try { fs.rmSync(path.join(ROOT, 'core.pid'), { force: true }); } catch { /* ignore */ }
+  startCore();
+  poll();
+}
+
 function menuTemplate() {
   const material = ui.material || 'white';
   const scale = ui.scale || 0.9;
@@ -251,9 +288,27 @@ function menuTemplate() {
     saveUi();
     sendCommand('scale', value);
   };
+  const sessions = (lastState && Array.isArray(lastState.sessions)) ? lastState.sessions : [];
+  const sessionItems = [
+    { label: '自动（最近任务）', type: 'radio', checked: !ui.pinned, click: () => { ui.pinned = ''; saveUi(); poll(); } },
+  ];
+  for (const item of sessions.slice(0, 5)) {
+    let label = String(item.title || '新的任务');
+    if (label.length > 18) label = label.slice(0, 18) + '…';
+    const dot = item.running ? '●' : '○';
+    sessionItems.push({
+      label: dot + ' ' + label,
+      type: 'radio',
+      checked: ui.pinned === item.id,
+      click: () => { ui.pinned = String(item.id || ''); saveUi(); poll(); },
+    });
+  }
   return [
     { label: '打开 DSH', click: () => { const state = lastState || readState() || {}; if (state.dshUrl) shell.openExternal(String(state.dshUrl)); } },
     { label: '摸摸头', click: () => sendCommand('pet') },
+    { label: '会话', submenu: sessionItems },
+    { label: '显示 / 隐藏详情', click: () => sendCommand('collapse') },
+    { label: '提醒音：' + (ui.sound ? '开' : '关'), click: () => { ui.sound = !ui.sound; saveUi(); } },
     { type: 'separator' },
     {
       label: '材质',
@@ -281,6 +336,21 @@ function menuTemplate() {
       },
     },
     { label: '打开说明', click: () => shell.openPath(README) },
+    {
+      label: '设置',
+      submenu: [
+        { label: '总在最前：' + (ui.topmost ? '开' : '关'), click: () => { ui.topmost = !ui.topmost; saveUi(); if (win) win.setAlwaysOnTop(!!ui.topmost, 'floating'); } },
+        { label: '桌面通知：' + (ui.notify ? '开' : '关'), click: () => { ui.notify = !ui.notify; saveUi(); } },
+        { label: '提示音：' + (ui.sound ? '开' : '关'), click: () => { ui.sound = !ui.sound; saveUi(); } },
+        { type: 'separator' },
+        { label: '重启后端', click: restartCore },
+        { label: '打开日志', click: () => shell.openPath(path.join(ROOT, 'logs')) },
+        { label: '打开安装目录', click: () => shell.openPath(ROOT) },
+        { label: '打开配置文件', click: () => shell.openPath(UI) },
+        { type: 'separator' },
+        { label: '登录自启（系统设置）', click: () => { if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.LoginItems-Settings.extension'); } },
+      ],
+    },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
   ];

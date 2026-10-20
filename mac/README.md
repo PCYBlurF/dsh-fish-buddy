@@ -7,8 +7,11 @@ macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Elec
 - 复用 `bin/fish-core.mjs` 读取 `~/.dsh` 会话日志并生成 `state.json`
 - 任务进度气泡、完成庆祝、三种材质
 - 双击角色查询当前模型 provider 余额（约 3 秒）
-- 菜单栏图标（macOS 的托盘）：显示/隐藏、打开 DSH、摸摸头、材质、大小、重置位置、说明、退出
-- 右键菜单：打开 DSH、摸摸头、材质、大小、重置位置、退出
+- 菜单栏图标（macOS 的托盘）：显示/隐藏、打开 DSH、摸摸头、会话、详情、提醒音、材质、大小、重置位置、说明、设置、退出
+- 右键菜单：打开 DSH、摸摸头、会话、显示/隐藏详情、提醒音、材质、大小、重置位置、说明、设置、退出
+- 会话子菜单：自动 / 最近任务，可固定
+- 设置：总在最前、桌面通知、提示音、重启后端、打开日志/目录/配置文件、登录自启
+- 任务完成时 macOS 系统通知 + 提示音
 - 拖动角色/气泡移动窗口，位置保存在 `mac/ui-mac.json`
 
 ## 环境要求
@@ -132,6 +135,15 @@ npm install
 
 > 不要用 `spctl --master-disable` 全局关闭 Gatekeeper。  
 > 正式分发给别人需要 Apple Developer ID 签名 + 公证；现在这种 npm Electron 方式只适合自己测试。
+
+## 余额提示“未找到 DEEPSEEK_API_KEY”
+
+余额查询需要 DeepSeek API Key：
+
+- 环境变量 `DEEPSEEK_API_KEY`，或
+- `~/.dsh/.credentials.yaml` 的 `refs:` 里有 `DEEPSEEK_API_KEY`
+
+如果 DSH 是账号登录/其他 provider 而没有 API Key，会显示“未找到 DEEPSEEK_API_KEY”；这不影响任务进度，也不是功能被删。
 
 ## 已知差异 / 限制
 

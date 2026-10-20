@@ -209,3 +209,14 @@ body.mat-glass .tail { border-top-color: rgba(242, 246, 251, 0.6); }
   60% { transform: translateY(-4px) scale(0.99); }
   100% { transform: translateY(0) scale(1); }
 }
+
+/* 显示 / 隐藏详情 */
+body.compact .task,
+body.compact .meta,
+body.compact .bar {
+  display: none !important;
+}
+
+body.compact .bubble {
+  padding-bottom: 9px;
+}

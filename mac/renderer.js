@@ -36,6 +36,10 @@
   const meta = $('meta');
   const pet = $('pet');
   const sprite = $('sprite');
+  const chime = new Audio('../assets/chime.wav');
+  function playChime() {
+    try { chime.currentTime = 0; chime.play().catch(() => {}); } catch { /* ignore */ }
+  }
 
   const images = {};
   for (const [name, list] of Object.entries(FRAMES)) {
@@ -313,6 +317,10 @@
       applyMaterial(value);
     } else if (command === 'scale') {
       applyScale(value);
+    } else if (command === 'collapse') {
+      document.body.classList.toggle('compact');
+    } else if (command === 'chime') {
+      playChime();
     }
   });
 
