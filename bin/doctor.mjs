@@ -15,9 +15,12 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DSH_HOME = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+const require = createRequire(import.meta.url);
+const { isAllowedDshUrl } = require(path.join(ROOT, 'bin', 'url-allowlist.cjs'));
 const args = new Set(process.argv.slice(2));
 const results = [];
 let failed = 0;
@@ -71,15 +74,33 @@ const newest = newestSession();
 add('最近会话', Boolean(newest), newest ? `${new Date(newest.mtimeMs).toLocaleString()} · ${path.basename(path.dirname(newest.file))}` : '没有找到 session.v4.jsonl.zstd');
 
 let credentialKey = false;
+let credentialText = '';
 const credentialFile = path.join(DSH_HOME, '.credentials.yaml');
 try {
-  const text = fs.readFileSync(credentialFile, 'utf8');
-  credentialKey = /^\s*DEEPSEEK_API_KEY:\s*\S+/m.test(text);
+  credentialText = fs.readFileSync(credentialFile, 'utf8');
+  credentialKey = /^\s*DEEPSEEK_API_KEY:\s*\S+/m.test(credentialText);
   add('DSH 凭据', true, credentialFile);
 } catch {
   add('DSH 凭据', false, `未找到 ${credentialFile}`);
 }
 add('DEEPSEEK_API_KEY', credentialKey, credentialKey ? '已配置（余额可查）' : '未配置（余额会提示未找到）');
+for (const key of ['OPENROUTER_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_API_KEY']) {
+  const found = new RegExp('^\\s*' + key + ':\\s*\\S+', 'm').test(credentialText);
+  add(key, true, found ? '已配置' : '未配置');
+}
+
+function countFishCores() {
+  try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*fish-core.mjs*' } | Measure-Object | Select-Object -ExpandProperty Count"], { encoding: 'utf8', timeout: 8000 });
+      return Number(String(out).trim()) || 0;
+    }
+    const out = execFileSync('ps', ['-axo', 'command'], { encoding: 'utf8', timeout: 8000 });
+    return out.split('\n').filter((line) => line.includes('fish-core.mjs')).length;
+  } catch {
+    return -1;
+  }
+}
 
 const stateFile = path.join(ROOT, 'state.json');
 try {
@@ -89,6 +110,10 @@ try {
 } catch {
   add('state.json', false, '还未生成');
 }
+try {
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  if (state.dshUrl) add('state.dshUrl', isAllowedDshUrl(state.dshUrl), String(state.dshUrl));
+} catch { /* ignore */ }
 
 try {
   const pid = parseInt(fs.readFileSync(path.join(ROOT, 'core.pid'), 'utf8'), 10);
@@ -98,8 +123,28 @@ try {
 } catch {
   add('fish-core', false, '没有 core.pid');
 }
+const coreCount = countFishCores();
+add('fish-core 实例', coreCount <= 1, coreCount < 0 ? '无法统计' : `${coreCount} 个`, coreCount > 1);
 
-add('配置文件', fs.existsSync(path.join(ROOT, 'config.json')), path.join(ROOT, 'config.json'));
+const configFile = path.join(ROOT, 'config.json');
+if (!fs.existsSync(configFile)) {
+  add('配置文件', false, configFile);
+} else {
+  try {
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    add('配置文件', true, configFile);
+    const known = new Set(['mascot', 'scale', 'pollMs', 'completionWindowMinutes', 'activeWindowMinutes', 'includeSubagents', 'maxSessionAgeHours', 'dshUrl', 'notify', 'sound', 'tray', 'compact']);
+    const unknown = Object.keys(config).filter((key) => !known.has(key));
+    add('配置键', unknown.length === 0, unknown.length ? `未知键: ${unknown.join(', ')}` : '无未知键');
+    if (config.scale !== undefined) {
+      const scale = Number(config.scale);
+      add('config.scale', Number.isFinite(scale) && scale >= 0.7 && scale <= 1.4, String(config.scale));
+    }
+    if (config.dshUrl) add('config.dshUrl', isAllowedDshUrl(config.dshUrl), String(config.dshUrl));
+  } catch (error) {
+    add('配置文件', false, `解析失败: ${error.message}`);
+  }
+}
 
 if (process.platform === 'darwin') {
   const electron = path.join(ROOT, 'mac', 'node_modules', 'electron');

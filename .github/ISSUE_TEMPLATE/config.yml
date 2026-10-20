@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 下载 / Release
+    url: https://github.com/PCYBlurF/dsh-fish-buddy/releases
+    about: 查看最新版本和历史版本
+  - name: macOS 状态
+    url: https://github.com/PCYBlurF/dsh-fish-buddy/blob/main/mac/README.md
+    about: macOS 目前为实验性、暂停研发

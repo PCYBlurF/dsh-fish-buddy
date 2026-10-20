@@ -1,0 +1,72 @@
+name: Bug report
+description: 报告 Windows / macOS 挂件的问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量附上版本、平台和可复现步骤。
+        **不要粘贴 API Key、token 或凭据文件内容。**
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows 10/11
+        - macOS
+        - DSH 插件启动
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 例如 v0.1.11，或 `git rev-parse --short HEAD`
+      placeholder: v0.1.11
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 发生了什么？截图或视频链接也可以。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / doctor
+      description: |
+        macOS 可运行 `mac/doctor.sh` 或右键 → 设置 → 运行自检；
+        Windows 可附 `logs/widget.log` 的相关行。
+        **请先删除 API Key、token、会话正文。**
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 已删除 API Key / token / 凭据内容
+          required: true

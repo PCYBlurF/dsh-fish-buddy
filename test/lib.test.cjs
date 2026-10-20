@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const lib = require('../mac/lib.cjs');
+const { isAllowedDshUrl } = require('../bin/url-allowlist.cjs');
 
 test('phaseForSession handles running/error/aborted/completed', () => {
   assert.equal(lib.phaseForSession(null), 'idle');
@@ -54,4 +55,16 @@ test('mergeUiConfig merges config defaults and ui overrides', () => {
   assert.equal(merged.scale, 1.2);
   assert.equal(merged.notify, true);
   assert.equal(merged.pinned, 's1');
+});
+
+test('isAllowedDshUrl only allows loopback http(s) without credentials', () => {
+  assert.equal(isAllowedDshUrl('http://127.0.0.1:11821'), true);
+  assert.equal(isAllowedDshUrl('http://localhost:2375'), true);
+  assert.equal(isAllowedDshUrl('http://[::1]:2375'), true);
+  assert.equal(isAllowedDshUrl('https://example.com'), false);
+  assert.equal(isAllowedDshUrl('file:///etc/passwd'), false);
+  assert.equal(isAllowedDshUrl('javascript:alert(1)'), false);
+  assert.equal(isAllowedDshUrl('data:text/html,x'), false);
+  assert.equal(isAllowedDshUrl('http://user:pass@127.0.0.1:2375'), false);
+  assert.equal(isAllowedDshUrl('http://127.0.0.1.evil.com:2375'), false);
 });

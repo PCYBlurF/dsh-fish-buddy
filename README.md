@@ -22,6 +22,16 @@
 
 macOS 版不再承诺双击即用；历史版本说明已合并到 [`CHANGELOG.md`](CHANGELOG.md)。
 
+### 状态停留时长
+
+| 状态 | Windows | macOS |
+| --- | --- | --- |
+| completed | 90s | 12s |
+| error | 60s | 12s |
+| aborted | 30s | 12s |
+
+这是有意的平台差异：Windows 保留更久的完成态，macOS 更紧凑；macOS 已暂停，后续如恢复再考虑统一。
+
 ## 功能
 
 - **实时进度**：直接读取 DSH 会话日志（分帧 zstd + JSONL），显示任务标题、`todo_write` 进度、当前工具/步骤、已用时间、目标轮次。

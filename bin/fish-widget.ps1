@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.11'
+$script:Version = '0.1.12'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -698,6 +698,16 @@ public static class DshFishWin {
 }
 "@
 
+function Test-AllowedDshUrl([string]$url) {
+  try {
+    $uri = [System.Uri]$url
+    if ($uri.Scheme -notin @('http', 'https')) { return $false }
+    if ($uri.UserInfo) { return $false }
+    $hostName = $uri.Host.ToLowerInvariant()
+    return @('localhost', '127.0.0.1', '::1', '[::1]') -contains $hostName
+  } catch { return $false }
+}
+
 function Open-Dsh {
   Write-DebugLog 'Open-Dsh'
   $handles = @()
@@ -730,7 +740,12 @@ function Open-Dsh {
     } catch { }
   }
   try {
-    if ($script:CurrentUrl) { Start-Process $script:CurrentUrl | Out-Null; Write-DebugLog ("fallback open {0}" -f $script:CurrentUrl) }
+    if ($script:CurrentUrl -and (Test-AllowedDshUrl $script:CurrentUrl)) {
+      Start-Process $script:CurrentUrl | Out-Null
+      Write-DebugLog ("fallback open {0}" -f $script:CurrentUrl)
+    } elseif ($script:CurrentUrl) {
+      Write-DebugLog ("blocked dshUrl {0}" -f $script:CurrentUrl)
+    }
   } catch { }
 }
 
