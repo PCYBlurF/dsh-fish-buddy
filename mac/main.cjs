@@ -24,6 +24,9 @@ let drag = null;
 let lastState = null;
 let saveTimer = null;
 let pollTimer = null;
+let hitRects = [];
+let hitTimer = null;
+let ignoreMouse = true;
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -270,6 +273,27 @@ function visibleOnSomeDisplay(x, y) {
   });
 }
 
+function updateHitTest() {
+  if (!win || win.isDestroyed()) return;
+  let inside = false;
+  if (win.isVisible() && hitRects.length > 0) {
+    try {
+      const point = screen.getCursorScreenPoint();
+      const [wx, wy] = win.getPosition();
+      inside = hitRects.some((rect) => (
+        point.x >= wx + rect[0] &&
+        point.x <= wx + rect[0] + rect[2] &&
+        point.y >= wy + rect[1] &&
+        point.y <= wy + rect[1] + rect[3]
+      ));
+    } catch { /* ignore */ }
+  }
+  if (inside !== !ignoreMouse) {
+    ignoreMouse = !inside;
+    try { win.setIgnoreMouseEvents(ignoreMouse, { forward: true }); } catch { /* ignore */ }
+  }
+}
+
 function createWindow() {
   const area = screen.getPrimaryDisplay().workArea;
   const winH = heightForScale(ui.scale);
@@ -300,6 +324,8 @@ function createWindow() {
     },
   });
   win.setAlwaysOnTop(!!ui.topmost, 'floating');
+  try { win.setIgnoreMouseEvents(true, { forward: true }); } catch { /* ignore */ }
+  ignoreMouse = true;
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(MAC, 'index.html'));
   win.once('ready-to-show', () => win.show());
@@ -310,6 +336,8 @@ function createWindow() {
   poll();
   clearInterval(pollTimer);
   pollTimer = setInterval(poll, 500);
+  clearInterval(hitTimer);
+  hitTimer = setInterval(updateHitTest, 60);
 }
 
 function sendCommand(command, value) {
@@ -447,6 +475,14 @@ ipcMain.handle('bootstrap', () => ({
 }));
 
 ipcMain.handle('balance', () => queryBalance());
+ipcMain.on('hit-rects', (_event, rects) => {
+  if (!Array.isArray(rects)) return;
+  hitRects = rects
+    .filter((rect) => Array.isArray(rect) && rect.length === 4 && rect.every((value) => Number.isFinite(Number(value))))
+    .slice(0, 6)
+    .map((rect) => rect.map(Number));
+  updateHitTest();
+});
 ipcMain.on('menu', () => showMenu());
 
 ipcMain.on('drag-start', (_event, point) => {
@@ -499,6 +535,7 @@ if (!gotLock) {
     savePosition();
     stopCore();
     clearInterval(pollTimer);
+    clearInterval(hitTimer);
   });
   app.on('window-all-closed', () => app.quit());
 }

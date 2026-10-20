@@ -7,6 +7,7 @@ macOS 上不能再使用原来的 WPF/PowerShell 挂件，所以这里用 **Elec
 - 复用 `bin/fish-core.mjs` 读取 `~/.dsh` 会话日志并生成 `state.json`
 - 任务进度气泡、完成庆祝、三种材质
 - 双击角色查询当前模型 provider 余额（约 3 秒）
+- 透明区域鼠标穿透：按角色/气泡矩形动态 `setIgnoreMouseEvents`，不会整窗挡住桌面
 - 菜单栏图标（macOS 的托盘）：显示/隐藏、打开 DSH、摸摸头、会话、详情、提醒音、材质、大小、重置位置、说明、设置、退出
 - 右键菜单：打开 DSH、摸摸头、会话、显示/隐藏详情、提醒音、材质、大小、重置位置、说明、设置、退出
 - 会话子菜单：自动 / 最近任务，可固定
@@ -151,4 +152,5 @@ npm install
 - 余额 provider 支持 DeepSeek / OpenRouter / Moonshot；其他 provider 会提示暂无余额接口。
 - 这是新加的 macOS 版本，当前开发环境没有 Mac，HTML/JS 已做本地模拟预览，但 Electron 透明窗口、原生菜单、登录自启还需要在 Mac 上首次实测。
 - 如果窗口跑到屏幕外，右键 → **重置位置**。
+- 鼠标穿透是矩形近似：角色矩形内的透明像素和尾巴之间的空隙仍可能拦截点击。
 - 如果一直没有任务数据，检查 `~/.dsh/sessions` 是否有最近会话，以及 `mac` 启动时是否找到 Node 22+（`DSH_NODE` 可手动指定 Node 路径）。

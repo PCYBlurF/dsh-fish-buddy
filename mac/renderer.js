@@ -22,6 +22,7 @@
     dragMove: () => {},
     dragEnd: () => {},
     saveUi: () => {},
+    setHitRects: () => {},
   };
 
   const $ = (id) => document.getElementById(id);
@@ -68,6 +69,41 @@
     }
   }
 
+  let hitRaf = 0;
+  function reportHitRects() {
+    const rects = [];
+    try {
+      const petRect = pet.getBoundingClientRect();
+      if (petRect.width > 0 && petRect.height > 0) {
+        rects.push([petRect.left, petRect.top, petRect.width, petRect.height]);
+      }
+      if (!bubble.classList.contains('hidden')) {
+        const bubbleRect = bubble.getBoundingClientRect();
+        if (bubbleRect.width > 0 && bubbleRect.height > 0) {
+          rects.push([bubbleRect.left, bubbleRect.top, bubbleRect.width, bubbleRect.height]);
+        }
+      }
+    } catch { /* ignore */ }
+    api.setHitRects(rects);
+  }
+  function queueHitRects() {
+    if (hitRaf) return;
+    hitRaf = requestAnimationFrame(() => {
+      hitRaf = 0;
+      reportHitRects();
+    });
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(queueHitRects);
+    observer.observe(bubble);
+    observer.observe(pet);
+  }
+  window.addEventListener('resize', queueHitRects);
+  pet.addEventListener('mouseenter', queueHitRects);
+  pet.addEventListener('mouseleave', queueHitRects);
+  setTimeout(reportHitRects, 300);
+  setTimeout(reportHitRects, 1200);
+
   function formatDuration(ms) {
     let seconds = Math.floor((Number(ms) || 0) / 1000);
     if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
@@ -77,6 +113,7 @@
 
   function setBubbleVisible(visible) {
     bubble.classList.toggle('hidden', !visible);
+    queueHitRects();
   }
 
   function setDot(color) {
@@ -263,6 +300,7 @@
       if (Date.now() < balanceUntil) return;
       balanceShowing = false;
       if (wasCompact) document.body.classList.add('compact');
+      queueHitRects();
       if (lastState) renderState(lastState);
       else setBubbleVisible(false);
     }, 3100);
@@ -279,6 +317,7 @@
     const value = Math.max(0.7, Math.min(1.3, Number(scale) || 0.9));
     document.documentElement.style.setProperty('--scale', String(value));
     api.saveUi({ scale: value });
+    queueHitRects();
   }
 
   // ── 拖拽与点击 ────────────────────────────────────────────────────────
