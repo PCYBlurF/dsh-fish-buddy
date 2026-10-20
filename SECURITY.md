@@ -22,5 +22,5 @@ Please include the version, platform, reproduction steps, and any relevant logs 
 
 ## Not in scope / known limitations
 
-- The macOS build is distributed as source and is **not code-signed/notarized** by Apple. macOS may quarantine the npm-installed Electron; see `mac/README.md`.
+- The macOS build is distributed as source and is **not code-signed/notarized** by Apple. macOS may quarantine the npm-installed Electron; see `mac/README.md`. Signing/notarization steps are documented in `mac/SIGNING.md`.
 - The app reads local DSH session logs and credentials by design; it does not send them to third parties. The balance query only sends the API key to the selected provider's official endpoint.

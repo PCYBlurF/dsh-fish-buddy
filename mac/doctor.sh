@@ -13,4 +13,4 @@ if [ -z "$NODE" ]; then
   echo "找不到 Node.js。"
   exit 1
 fi
-exec "$NODE" ../bin/doctor.mjs
+exec "$NODE" ../bin/doctor.mjs "$@"

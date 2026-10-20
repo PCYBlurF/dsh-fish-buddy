@@ -3,20 +3,27 @@
  * DSH 大肥鱼 · doctor
  * 检查运行环境、DSH 会话、凭据、后端状态和 macOS 安装。
  * 不输出任何密钥内容。
+ *
+ * 用法：
+ *   node bin/doctor.mjs             只打印
+ *   node bin/doctor.mjs --report    同时写 logs/doctor-*.txt
+ *   node bin/doctor.mjs --bundle    写报告并打包 logs/dsh-fish-diagnostic-*.zip
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DSH_HOME = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+const args = new Set(process.argv.slice(2));
 const results = [];
 let failed = 0;
 
 function add(name, ok, detail, critical = false) {
-  results.push({ name, ok, detail, critical });
+  results.push({ name, ok, detail });
   if (critical && !ok) failed += 1;
 }
 
@@ -103,12 +110,68 @@ if (process.platform === 'darwin') {
   add('ui-mac.json', fs.existsSync(path.join(ROOT, 'mac', 'ui-mac.json')), '窗口位置/材质设置');
 }
 
-console.log('DSH 大肥鱼 · doctor');
-console.log(`platform: ${process.platform} · root: ${ROOT}`);
-console.log('');
+const lines = [
+  'DSH 大肥鱼 · doctor',
+  `platform: ${process.platform} · arch: ${process.arch} · root: ${ROOT}`,
+  `time: ${new Date().toISOString()}`,
+  '',
+];
 for (const item of results) {
-  console.log(`${item.ok ? 'OK  ' : 'FAIL'}  ${item.name}: ${item.detail}`);
+  lines.push(`${item.ok ? 'OK  ' : 'FAIL'}  ${item.name}: ${item.detail}`);
 }
-console.log('');
-console.log(failed === 0 ? '结果: OK' : `结果: ${failed} 个关键项失败`);
+lines.push('', failed === 0 ? '结果: OK' : `结果: ${failed} 个关键项失败`);
+console.log(lines.join('\n'));
+
+function diagnosticFiles(reportFile) {
+  const files = [reportFile];
+  for (const name of ['state.json', 'config.json']) {
+    const file = path.join(ROOT, name);
+    if (fs.existsSync(file)) files.push(file);
+  }
+  const ui = path.join(ROOT, 'mac', 'ui-mac.json');
+  if (fs.existsSync(ui)) files.push(ui);
+  const logsDir = path.join(ROOT, 'logs');
+  try {
+    for (const name of fs.readdirSync(logsDir)) {
+      if (name.endsWith('.log')) files.push(path.join(logsDir, name));
+    }
+  } catch { /* ignore */ }
+  return files;
+}
+
+function createBundle(reportFile, stamp) {
+  const zipFile = path.join(ROOT, 'logs', `dsh-fish-diagnostic-${stamp}.zip`);
+  const files = diagnosticFiles(reportFile);
+  try {
+    if (process.platform === 'win32') {
+      const list = files.map((file) => `'${file.replace(/'/g, "''")}'`).join(',');
+      const destination = zipFile.replace(/'/g, "''");
+      execFileSync('powershell.exe', [
+        '-NoProfile',
+        '-Command',
+        `Compress-Archive -LiteralPath @(${list}) -DestinationPath '${destination}' -Force`,
+      ], { stdio: 'ignore' });
+    } else {
+      execFileSync('zip', ['-j', zipFile, ...files], { stdio: 'ignore' });
+    }
+    console.log(`诊断包: ${zipFile}`);
+  } catch {
+    console.log(`诊断包打包失败，可手动收集：${reportFile}`);
+  }
+}
+
+if (args.has('--report') || args.has('--bundle')) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const logsDir = path.join(ROOT, 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  const reportFile = path.join(logsDir, `doctor-${stamp}.txt`);
+  try {
+    fs.writeFileSync(reportFile, `${lines.join('\n')}\n`);
+    console.log(`诊断报告: ${reportFile}`);
+    if (args.has('--bundle')) createBundle(reportFile, stamp);
+  } catch (error) {
+    console.log(`诊断报告写入失败: ${error.message}`);
+  }
+}
+
 process.exit(failed === 0 ? 0 : 1);

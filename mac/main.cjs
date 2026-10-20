@@ -326,11 +326,13 @@ function sendCommand(command, value) {
   if (win && !win.isDestroyed()) win.webContents.send('command', command, value);
 }
 
-function runDoctor() {
+function runDoctor(bundle = false) {
   const node = resolveNode();
   const env = { ...process.env };
   if (node === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
-  execFile(node, [path.join(ROOT, 'bin', 'doctor.mjs')], { cwd: ROOT, env, timeout: 20000 }, (error, stdout, stderr) => {
+  const args = [path.join(ROOT, 'bin', 'doctor.mjs')];
+  if (bundle) args.push('--bundle');
+  execFile(node, args, { cwd: ROOT, env, timeout: 30000 }, (error, stdout, stderr) => {
     const text = [stdout, stderr, error ? `exit=${error.code || 'error'}` : ''].filter(Boolean).join('\n');
     try {
       dialog.showMessageBox({
@@ -437,7 +439,8 @@ function menuTemplate() {
         { label: '桌面通知：' + (ui.notify ? '开' : '关'), click: () => { ui.notify = !ui.notify; saveUi(); } },
         { label: '提示音：' + (ui.sound ? '开' : '关'), click: () => { ui.sound = !ui.sound; saveUi(); } },
         { type: 'separator' },
-        { label: '运行自检 / doctor', click: runDoctor },
+        { label: '运行自检 / doctor', click: () => runDoctor(false) },
+        { label: '导出诊断包', click: () => runDoctor(true) },
         { type: 'separator' },
         { label: '重启后端', click: restartCore },
         { label: '打开日志', click: () => shell.openPath(path.join(ROOT, 'logs')) },

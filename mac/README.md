@@ -50,6 +50,14 @@ cd mac
 
 或右键 → **设置 → 运行自检 / doctor**。会检查 Node 22.15+、zstd、DSH_HOME、会话、API Key、state.json、fish-core 和 Electron 依赖。
 
+导出诊断包：
+
+```bash
+./doctor.sh --bundle
+```
+
+或右键 → **设置 → 导出诊断包**。会在 `logs/` 下生成 `dsh-fish-diagnostic-*.zip`，包含 doctor 报告、state/config、ui-mac 和日志；**不包含 API Key 和凭据文件**。
+
 ### 卸载
 
 ```bash
@@ -165,7 +173,7 @@ npm install
 它会移除 quarantine 并做 ad-hoc 签名，然后重新运行 `./start-mac.command`。
 
 > 不要用 `spctl --master-disable` 全局关闭 Gatekeeper。  
-> 正式分发给别人需要 Apple Developer ID 签名 + 公证；现在这种 npm Electron 方式只适合自己测试。
+> 正式分发给别人需要 Apple Developer ID 签名 + 公证；现在这种 npm Electron 方式只适合自己测试。具体步骤和所需证书见 [`SIGNING.md`](SIGNING.md)。
 
 ## 余额提示“未找到 DEEPSEEK_API_KEY”
 
