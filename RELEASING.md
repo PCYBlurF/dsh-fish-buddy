@@ -42,11 +42,13 @@ git tag -a v0.1.x -m "DSH 大肥鱼 v0.1.x"
 git push origin main
 git push origin v0.1.x
 
-# 4. 打包
-git archive --format=zip --output="G:/Workspace/dsh-fish-buddy-v0.1.x.zip" v0.1.x
+# 4. 打包（统一放到归档目录，不要散落在 G:/Workspace 根目录）
+RELEASE_DIR="G:/Workspace/杂物/dsh-fish-buddy-releases"
+mkdir -p "$RELEASE_DIR"
+git archive --format=zip --output="$RELEASE_DIR/dsh-fish-buddy-v0.1.x.zip" v0.1.x
 
 # 5. 创建 release（先获得许可）
-gh release create v0.1.x "G:/Workspace/dsh-fish-buddy-v0.1.x.zip" \
+gh release create v0.1.x "$RELEASE_DIR/dsh-fish-buddy-v0.1.x.zip" \
   --title "DSH 大肥鱼 v0.1.x" \
   --notes-file release-notes-v0.1.x.md \
   --latest
