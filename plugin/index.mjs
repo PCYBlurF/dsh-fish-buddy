@@ -9,7 +9,7 @@
  *   enabled    设为 false 可临时禁用自动启动
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -30,6 +30,50 @@ function logInfo(ctx, message) {
     ctx?.logger?.('fish-buddy')?.info?.(message);
   } catch {
     /* ignore */
+  }
+}
+
+function widgetPid(widgetDir) {
+  try {
+    return Number.parseInt(readFileSync(join(widgetDir, 'widget.pid'), 'utf8'), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function isWidgetRunning(widgetDir) {
+  const pid = widgetPid(widgetDir);
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function launchWindows(ctx, widgetDir) {
+  const vbs = join(widgetDir, 'bin', 'fish-widget.vbs');
+  if (!existsSync(vbs)) {
+    logWarn(ctx, `找不到挂件启动器：${vbs}`);
+    return false;
+  }
+  try {
+    const child = spawn('wscript.exe', [vbs], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      cwd: widgetDir,
+    });
+    child.on('error', (error) => {
+      logWarn(ctx, `启动挂件失败：${error.message}`);
+    });
+    child.unref();
+    logInfo(ctx, 'DSH 大肥鱼已在桌面待命');
+    return true;
+  } catch (error) {
+    logWarn(ctx, `启动挂件异常：${error instanceof Error ? error.message : String(error)}`);
+    return false;
   }
 }
 
@@ -72,23 +116,37 @@ export function apply(ctx, config = {}) {
       return;
     }
 
-    const vbs = join(widgetDir, 'bin', 'fish-widget.vbs');
-    if (!existsSync(vbs)) {
-      logWarn(ctx, `找不到挂件启动器：${vbs}`);
-      return;
+    const quitFlag = join(widgetDir, 'quit.flag');
+    try {
+      if (existsSync(quitFlag)) unlinkSync(quitFlag);
+    } catch {
+      /* ignore */
     }
 
-    const child = spawn('wscript.exe', [vbs], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      cwd: widgetDir,
-    });
-    child.on('error', (error) => {
-      logWarn(ctx, `启动挂件失败：${error.message}`);
-    });
-    child.unref();
-    logInfo(ctx, 'DSH 大肥鱼已在桌面待命');
+    launchWindows(ctx, widgetDir);
+
+    const ensure = () => {
+      try {
+        if (existsSync(quitFlag)) return;
+        if (!isWidgetRunning(widgetDir)) launchWindows(ctx, widgetDir);
+      } catch (error) {
+        logWarn(ctx, `自动拉起检查失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+
+    try {
+      if (typeof ctx.effect === 'function') {
+        ctx.effect(() => {
+          const timer = setInterval(ensure, 15000);
+          return () => clearInterval(timer);
+        });
+      } else if (typeof ctx.on === 'function') {
+        const timer = setInterval(ensure, 15000);
+        ctx.on('dispose', () => clearInterval(timer));
+      }
+    } catch {
+      /* ignore */
+    }
   } catch (error) {
     logWarn(ctx, `启动挂件异常：${error instanceof Error ? error.message : String(error)}`);
   }

@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.13'
+$script:Version = '0.1.14'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -727,7 +727,7 @@ function Init-Tray {
     $miUpdateTray.Add_Click({ Check-Update })
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     $miExit = $menu.Items.Add('退出大肥鱼')
-    $miExit.Add_Click({ $script:Window.Close() })
+    $miExit.Add_Click({ Exit-FishWidget })
     foreach ($it in $menu.Items) {
       if ($it -is [System.Windows.Forms.ToolStripMenuItem]) {
         $it.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
@@ -827,6 +827,35 @@ function Set-Pin([string]$id) {
     Save-JsonFile $script:UiPath $script:Ui
   } catch { }
   Write-DebugLog ("pin session: '" + $id + "'")
+}
+
+function Test-WindowOnScreen {
+  try {
+    if ($null -eq $script:Window) { return $false }
+    $l = [double]$script:Window.Left
+    $t = [double]$script:Window.Top
+    $w = [double]$script:Window.ActualWidth
+    $h = [double]$script:Window.ActualHeight
+    if ($w -le 0) { $w = [double]$script:Window.Width }
+    if ($h -le 0) { $h = [double]$script:Window.Height }
+    if ($w -le 0 -or $h -le 0) { return $false }
+    foreach ($s in [System.Windows.Forms.Screen]::AllScreens) {
+      $a = $s.WorkingArea
+      $ix = [Math]::Min($l + $w, $a.Right) - [Math]::Max($l, $a.Left)
+      $iy = [Math]::Min($t + $h, $a.Bottom) - [Math]::Max($t, $a.Top)
+      if ($ix -ge 40 -and $iy -ge 40) { return $true }
+    }
+  } catch { }
+  return $false
+}
+
+function Ensure-OnScreen {
+  if (-not (Test-WindowOnScreen)) { Reset-Position }
+}
+
+function Exit-FishWidget {
+  try { Set-Content -LiteralPath (Join-Path $script:AppDir 'quit.flag') -Value (Get-Date).ToString('o') -Encoding UTF8 } catch { }
+  $script:Window.Close()
 }
 
 function Reset-Position {
@@ -1343,6 +1372,10 @@ function Set-LayeredMenu($menu, [double]$opacity) {
 function Set-RoundedMenu($menu, [int]$radius = 8) {
   try {
     if ($null -eq $menu -or $menu.Width -le 0 -or $menu.Height -le 0) { return }
+    if ($menu.Width -le 40 -or $menu.Height -le 10) {
+      try { $menu.BeginInvoke([Action]{ Set-RoundedMenu $menu $radius }) | Out-Null } catch { }
+      return
+    }
     $w = $menu.Width; $h = $menu.Height; $d = $radius * 2
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $path.AddArc(0, 0, $d, $d, 180, 90)
@@ -1853,7 +1886,7 @@ function Show-ContextMenu {
   [void](Add-SettingsMenu)
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
-  [void](Add-ContextItem '退出大肥鱼' { $script:Window.Close() })
+  [void](Add-ContextItem '退出大肥鱼' { Exit-FishWidget })
   try { Set-MenuTheme $script:Menu $script:Material } catch { Write-DebugLog ('menu theme error: ' + $_.Exception.Message) }
   try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { Write-DebugLog ('menu show error: ' + $_.Exception.Message) }
 }
@@ -2298,6 +2331,7 @@ $script:Window.Add_Loaded({
     $script:TaskText.Text = '正在连接 DSH…'
     Show-Bubble
     if ($script:Material -eq 'white' -or $script:Material -eq 'glass') { Apply-Material }
+    Ensure-OnScreen
     Register-Hotkey
   } catch { }
 })

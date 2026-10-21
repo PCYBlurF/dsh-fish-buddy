@@ -26,3 +26,6 @@ mac/node_modules/
 mac/ui-mac.json
 mac/autostart.log
 mac/package-lock.json
+
+# widget user-exit marker
+quit.flag
