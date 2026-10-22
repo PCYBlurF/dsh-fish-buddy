@@ -34,11 +34,16 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) continue;
-    const key = a.slice(2);
+    const body = a.slice(2);
+    if (body.includes('=')) {
+      const eq = body.indexOf('=');
+      out[body.slice(0, eq)] = body.slice(eq + 1);
+      continue;
+    }
     const next = argv[i + 1];
-    if (next === undefined || (next.startsWith('--') && next.length > 2)) out[key] = true;
+    if (next === undefined || next.startsWith('--')) out[body] = true;
     else {
-      out[key] = next;
+      out[body] = next;
       i++;
     }
   }
@@ -46,6 +51,13 @@ function parseArgs(argv) {
 }
 
 const ARGS = parseArgs(process.argv.slice(2));
+if (ARGS.config === true || ARGS.state === true) {
+  console.error('--config/--state 需要一个路径参数');
+  process.exit(1);
+}
+for (const key of Object.keys(ARGS)) {
+  if (key !== 'config' && key !== 'state') console.error(`warning: unknown argument --${key}`);
+}
 const CONFIG_PATH = ARGS.config ? path.resolve(ARGS.config) : path.join(APP_DIR, 'config.json');
 const STATE_PATH = ARGS.state ? path.resolve(ARGS.state) : path.join(APP_DIR, 'state.json');
 const LOG_PATH = path.join(APP_DIR, 'logs', 'core.log');
@@ -319,9 +331,14 @@ function applyEvent(model, o) {
         break;
       }
       case 'assistant/message': {
+        model.retrying = 0;
         const source = (data.message && data.message.source) || {};
         if (source.provider) model.provider = String(source.provider);
         if (source.model) model.llmModel = String(source.model);
+        break;
+      }
+      case 'assistant/attempt': {
+        model.retrying = 0;
         break;
       }
       case 'user/message': {
@@ -346,11 +363,13 @@ function applyEvent(model, o) {
         break;
       }
       case 'step/start': {
+        model.retrying = 0;
         model.step = data.step ?? model.step + 1;
         model.stepsThisTurn = Math.max(model.stepsThisTurn, model.step);
         break;
       }
       case 'tool/call': {
+        model.retrying = 0;
         model.lastTool = {
           name: data.name || 'tool',
           summary: toolSummary(data.name, data.arguments),
@@ -427,6 +446,13 @@ function activityLabel(model) {
   if (!model.running) return null;
   const type = model.lastEventType;
   if (model.retrying > 0) return { kind: 'retry', text: '网络重试中…' };
+  if (typeof type === 'string' && type.startsWith('job/')) {
+    if (type === 'job/registered' || type === 'job/queued') return { kind: 'job', text: '后台任务排队中…' };
+    if (type === 'job/started' || type === 'job/running') return { kind: 'job', text: '后台任务执行中…' };
+    if (type === 'job/settled' || type === 'job/completed') return { kind: 'job', text: '后台任务已完成…' };
+    if (type === 'job/failed' || type === 'job/error') return { kind: 'job', text: '后台任务失败…' };
+    return { kind: 'job', text: '后台任务处理中…' };
+  }
   if (type === 'tool/call') {
     return { kind: 'tool', text: `执行 ${model.lastTool?.name || '工具'}`, detail: model.lastTool?.summary || '' };
   }
@@ -542,24 +568,24 @@ function buildState(now) {
 
   // 最近一次“完成”的回合（用于提醒）
   const completionWindow = CONFIG.completionWindowMinutes * 60 * 1000;
-  let completion = null;
+  const completions = [];
   for (const m of recent) {
     const last = m.lastTurn;
     if (!last || !last.endedAt) continue;
     if (now - last.endedAt > completionWindow) continue;
-    if (last.reason !== 'completed' && last.reason !== 'aborted' && last.reason !== 'error') continue;
-    if (!completion || last.endedAt > completion.endedAt) {
-      completion = {
-        id: `${m.id}:${last.turn}:${last.endedAt}`,
-        at: last.endedAt,
-        title: shortText(m.title || '当前任务', 100),
-        reason: last.reason,
-        durationMs: last.durationMs,
-        sessionId: m.id,
-        turn: last.turn,
-      };
-    }
+    if (!['completed', 'aborted', 'error', 'interrupted'].includes(last.reason)) continue;
+    completions.push({
+      id: `${m.id}:${last.turn}:${last.endedAt}`,
+      at: last.endedAt,
+      title: shortText(m.title || '当前任务', 100),
+      reason: last.reason,
+      durationMs: last.durationMs,
+      sessionId: m.id,
+      turn: last.turn,
+    });
   }
+  completions.sort((a, b) => b.at - a.at);
+  const completion = completions[0] || null;
 
   const phase = !primary ? 'idle' : primary.running ? 'working' : 'done';
 
@@ -589,9 +615,18 @@ function buildState(now) {
     };
   };
 
-  const ordered = recent
+  let ordered = recent
     .slice()
     .sort((a, b) => Number(b.running) - Number(a.running) || b.lastEventAt - a.lastEventAt);
+  try {
+    const ui = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'ui.json'), 'utf8'));
+    if (ui && ui.pinned) {
+      const pinnedModel = models.find((m) => m.id === ui.pinned);
+      if (pinnedModel && !ordered.some((m) => m.id === pinnedModel.id)) ordered = [pinnedModel, ...ordered];
+    }
+  } catch {
+    /* ignore */
+  }
 
   const state = {
     v: 1,
@@ -601,6 +636,7 @@ function buildState(now) {
     activeSessions: running.length,
     session: primary === null ? null : viewOf(primary),
     completion,
+    completions: completions.slice(0, 8),
     sessions: ordered.slice(0, 6).map(viewOf),
   };
   return state;
@@ -612,7 +648,8 @@ let writeFailures = 0;
 
 function writeState(state) {
   const text = JSON.stringify(state);
-  if (text === lastSerialized) return;
+  const signature = JSON.stringify({ ...state, now: 0 });
+  if (signature === lastSerialized) return;
   if (Buffer.byteLength(text, 'utf8') > 512 * 1024) {
     log('state.json 超过 512KB，跳过本次写入');
     return;
@@ -631,7 +668,7 @@ function writeState(state) {
         /* ignore */
       }
     }
-    lastSerialized = text;
+    lastSerialized = signature;
     writeFailures = 0;
   } catch (error) {
     writeFailures += 1;

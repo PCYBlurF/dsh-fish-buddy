@@ -68,3 +68,14 @@ test('isAllowedDshUrl only allows loopback http(s) without credentials', () => {
   assert.equal(isAllowedDshUrl('http://user:pass@127.0.0.1:2375'), false);
   assert.equal(isAllowedDshUrl('http://127.0.0.1.evil.com:2375'), false);
 });
+
+test('isAllowedDshUrl only allows loopback http/https', () => {
+  assert.equal(isAllowedDshUrl('http://127.0.0.1:11821'), true);
+  assert.equal(isAllowedDshUrl('http://[::1]:11821'), true);
+  assert.equal(isAllowedDshUrl('http://localhost:11821'), true);
+  assert.equal(isAllowedDshUrl('https://example.com'), false);
+  assert.equal(isAllowedDshUrl('file:///etc/passwd'), false);
+  assert.equal(isAllowedDshUrl('javascript:alert(1)'), false);
+  assert.equal(isAllowedDshUrl('data:text/html,x'), false);
+  assert.equal(isAllowedDshUrl('http://user:pass@127.0.0.1:11821'), false);
+});

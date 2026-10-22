@@ -62,15 +62,17 @@ if (Test-Path -LiteralPath $stop) { & $stop | Out-Null }
 $backup = "$patch.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
 Copy-Item -LiteralPath $patch -Destination $backup -Force
 
-$pluginPath = (Join-Path $repo 'plugin\index.mjs') -replace '\\', '/'
+$pluginUri = ([uri](Join-Path $repo 'plugin\index.mjs')).AbsoluteUri
 $widgetDir = $repo -replace '\\', '/'
+$pluginYaml = $pluginUri -replace "'", "''"
+$widgetYaml = $widgetDir -replace "'", "''"
 $block = @"
 $begin
 - insert:
     - id: dsh-fish-buddy
-      name: file:///$pluginPath
+      name: '$pluginYaml'
       config:
-        widgetDir: $widgetDir
+        widgetDir: '$widgetYaml'
 $end
 "@
 

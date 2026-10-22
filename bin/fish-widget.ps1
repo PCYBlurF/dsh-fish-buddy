@@ -27,6 +27,8 @@ $script:PidPath = Join-Path $script:AppDir 'widget.pid'
 
 function Write-DebugLog([string]$msg) {
   try {
+    $dir = Split-Path -Parent $script:WidgetLog
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $line = "[{0}] {1}" -f (Get-Date -Format 'MM-dd HH:mm:ss'), $msg
     Add-Content -LiteralPath $script:WidgetLog -Value $line -Encoding UTF8
   } catch { }
@@ -99,8 +101,12 @@ function Save-JsonFile([string]$path, $obj) {
   } catch { }
 }
 
+$configExisted = Test-Path -LiteralPath $script:ConfigPath
 $script:Config = Read-JsonFile $script:ConfigPath
 if ($null -eq $script:Config) {
+  if ($configExisted) {
+    try { Copy-Item -LiteralPath $script:ConfigPath -Destination ($script:ConfigPath + '.corrupt-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) -Force } catch { }
+  }
   $script:Config = [pscustomobject]@{
     notify = $true
     sound  = $true
@@ -112,14 +118,14 @@ if ($null -eq $script:Config) {
 
 $script:Ui = Read-JsonFile $script:UiPath
 if ($null -eq $script:Ui) {
-  $script:Ui = [pscustomobject]@{ left = $null; top = $null; collapsed = $false; sound = $true }
+  $script:Ui = [pscustomobject]@{ left = $null; top = $null; collapsed = $false; sound = $null }
 }
 
 $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.16'
+$script:Version = '0.1.17'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -281,6 +287,7 @@ if ($script:SpriteMode -and $null -ne $script:MascotImage) {
 } elseif ($null -ne $script:MascotImage) {
   try {
     $imgPath = Join-Path $script:AppDir 'assets\whale.png'
+    if (-not (Test-Path -LiteralPath $imgPath)) { $imgPath = Join-Path $script:AppDir 'assets\whale\idle_0.png' }
     if (Test-Path -LiteralPath $imgPath) { $script:MascotImage.Source = Load-Bitmap $imgPath }
   } catch { Write-DebugLog ("mascot image load failed: " + $_.Exception.Message) }
 }
@@ -343,15 +350,26 @@ $script:CoreRestarts = 0
 $script:LastStateWrite = [DateTime]::MinValue
 
 function Get-NodePath {
-  $candidates = @(
-    (Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe'),
-    (Join-Path $env:USERPROFILE '.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe')
-  )
-  foreach ($c in $candidates) {
-    if ($c -and (Test-Path -LiteralPath $c)) { return $c }
+  $candidates = @()
+  if ($env:DSH_HOME) {
+    $candidates += (Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe')
+  }
+  if ($env:USERPROFILE) {
+    $candidates += (Join-Path $env:USERPROFILE '.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe')
   }
   $cmd = Get-Command node -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
+  if ($cmd) { $candidates += $cmd.Source }
+  foreach ($c in $candidates) {
+    if (-not $c -or -not (Test-Path -LiteralPath $c)) { continue }
+    try {
+      $probe = & $c -e "const z=require('zlib'); process.stdout.write(process.versions.node + ' ' + typeof z.zstdDecompressSync)" 2>$null
+      if ($LASTEXITCODE -ne 0 -or $probe -notmatch '^(\d+)\.(\d+)') { continue }
+      $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+      if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 15)) { Write-DebugLog ("node too old: $c $probe"); continue }
+      if ($probe -notmatch 'function') { Write-DebugLog ("node missing zstd: $c $probe"); continue }
+      return $c
+    } catch { }
+  }
   return $null
 }
 
@@ -394,6 +412,15 @@ $script:TopInset = 29.5
 $script:Gap = 31.5
 $script:ShadowW = 120
 $script:ShadowH = 14
+if ($script:Mascot -eq 'fish') {
+  $script:BaseW = 380
+  $script:BaseH = 432
+  $script:BaseImg = 210
+  $script:TopInset = 0
+  $script:Gap = 30
+  $script:ShadowW = 150
+  $script:ShadowH = 18
+}
 if ($script:Mascot -eq 'whale') {
   $script:BaseH = 570
   $script:BaseImg = 370
@@ -416,7 +443,7 @@ function Set-MascotVisual([double]$s) {
   if ($null -ne $script:MascotScale) {
     try { $script:MascotScale.ScaleX = $s; $script:MascotScale.ScaleY = $s } catch { }
   }
-  if ($null -ne $script:BubbleHost) {
+  if ($script:Mascot -ne 'fish' -and $null -ne $script:BubbleHost) {
     $m = Get-MascotSize $s
     try { $script:BubbleHost.Margin = [Windows.Thickness]::new(0, 0, 0, [double]$m.Margin) } catch { }
   }
@@ -610,8 +637,8 @@ function Toggle-DotPulse([bool]$on) {
 }
 
 function Start-Celebrate {
-  try { $script:SbCelebrate.Begin($script:Window) } catch { }
-  try { $script:SbSparkle.Begin($script:Window) } catch { }
+  try { $script:SbCelebrate.Begin($script:Window, $true) } catch { }
+  try { $script:SbSparkle.Begin($script:Window, $true) } catch { }
   try { $script:DoneBadge.Opacity = 1.0 } catch { }
   try {
     $script:HappyEyes.Opacity = 1.0
@@ -623,6 +650,8 @@ function Start-Celebrate {
 }
 
 function Stop-Celebrate {
+  try { $script:SbCelebrate.Stop($script:Window) } catch { }
+  try { $script:SbSparkle.Stop($script:Window) } catch { }
   try { $script:DoneBadge.Opacity = 0.0 } catch { }
   try {
     if ($script:HappyEyes.Opacity -gt 0) {
@@ -637,6 +666,7 @@ function Stop-Celebrate {
 
 # ── 托盘提醒 ─────────────────────────────────────────────────────────────
 $script:Tray = $null
+$script:TraySoundItem = $null
 $script:HotkeyRegistered = $false
 $script:HotkeyHwnd = [IntPtr]::Zero
 $script:HotkeySource = $null
@@ -644,6 +674,10 @@ $script:HotkeyHandler = $null
 $script:HotkeyId = 0x4A01
 
 function Hide-FishWindow {
+  if ($null -eq $script:Tray -and -not $script:HotkeyRegistered) {
+    try { [void][System.Windows.MessageBox]::Show('托盘图标和全局热键都不可用，躲起来后将无法恢复；已取消。', 'DSH 大肥鱼', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) } catch { }
+    return
+  }
   $script:WindowHidden = $true
   Set-LoopAnimations $false
   try { $script:Window.Hide() } catch { }
@@ -759,6 +793,7 @@ function Init-Tray {
     $miPinTray.Add_Click({ Open-TraySettings })
     $soundLabel = if ($script:SoundOn) { '提醒音：开' } else { '提醒音：关' }
     $miSound = $menu.Items.Add($soundLabel)
+    $script:TraySoundItem = $miSound
     $miSound.Add_Click({
       $script:SoundOn = -not $script:SoundOn
       if ($script:SoundOn) { $miSound.Text = '提醒音：开' } else { $miSound.Text = '提醒音：关' }
@@ -789,10 +824,30 @@ function Init-Tray {
 }
 
 function Notify-Completion([string]$title, [string]$body) {
-  if ($null -eq $script:Tray) { return }
   if (-not $script:NotifyOn) { return }
   try {
-    $script:Tray.ShowBalloonTip(6000, $title, $body, [System.Windows.Forms.ToolTipIcon]::None)
+    if ($null -ne $script:Tray) {
+      $script:Tray.ShowBalloonTip(6000, $title, $body, [System.Windows.Forms.ToolTipIcon]::None)
+      return
+    }
+    # tray=false 时用临时托盘图标发通知，避免 notify 被静默禁用。
+    $icon = New-Object System.Windows.Forms.NotifyIcon
+    $icon.Icon = [System.Drawing.SystemIcons]::Information
+    $icon.Visible = $true
+    $icon.ShowBalloonTip(6000, $title, $body, [System.Windows.Forms.ToolTipIcon]::None)
+    $script:TempNotifyIcon = $icon
+    if ($null -eq $script:TempNotifyTimer) {
+      $script:TempNotifyTimer = New-Object System.Windows.Threading.DispatcherTimer
+      $script:TempNotifyTimer.Interval = [TimeSpan]::FromSeconds(8)
+      $script:TempNotifyTimer.Add_Tick({
+        try {
+          $script:TempNotifyTimer.Stop()
+          if ($null -ne $script:TempNotifyIcon) { $script:TempNotifyIcon.Visible = $false; $script:TempNotifyIcon.Dispose() }
+        } catch { }
+        $script:TempNotifyIcon = $null
+      })
+    }
+    if (-not $script:TempNotifyTimer.IsEnabled) { $script:TempNotifyTimer.Start() }
   } catch { }
 }
 
@@ -820,6 +875,7 @@ function Test-AllowedDshUrl([string]$url) {
     $uri = [System.Uri]$url
     if ($uri.Scheme -notin @('http', 'https')) { return $false }
     if ($uri.UserInfo) { return $false }
+    if ($uri.IsLoopback) { return $true }
     $hostName = $uri.Host.ToLowerInvariant()
     return @('localhost', '127.0.0.1', '::1', '[::1]') -contains $hostName
   } catch { return $false }
@@ -978,7 +1034,7 @@ function Move-Drag($sender, $e) {
 }
 
 $script:ClickTimer = New-Object System.Windows.Threading.DispatcherTimer
-$script:ClickTimer.Interval = [TimeSpan]::FromMilliseconds(240)
+$script:ClickTimer.Interval = [TimeSpan]::FromMilliseconds([System.Windows.Forms.SystemInformation]::DoubleClickTime)
 $script:ClickTimer.Add_Tick({
   $script:ClickTimer.Stop()
   Toggle-Collapsed
@@ -1112,9 +1168,14 @@ function Show-Balance {
     }
     'moonshot|kimi' {
       $endpoint = 'https://api.moonshot.cn/v1/users/me/balance'
-      $credName = 'MOONSHOT_API_KEY'
       $title = 'Moonshot 余额'
       $script:BalanceKind = 'moonshot'
+      if ($provider -match 'kimi') {
+        $credName = 'KIMI_API_KEY'
+        if (-not (Get-DshCredential $credName)) { $credName = 'MOONSHOT_API_KEY' }
+      } else {
+        $credName = 'MOONSHOT_API_KEY'
+      }
     }
     default {
       Set-BalanceBubble ($provider + ' 余额') '该 provider 暂无余额接口' ('当前模型：' + $model) '#FFB454'
@@ -1191,8 +1252,11 @@ function Update-BalanceJob {
     $ok = $true
     switch ($script:BalanceKind) {
       'deepseek' {
+        if ($null -eq $data.is_available -or $null -eq $data.balance_infos) { throw 'DeepSeek 响应缺少 balance_infos/is_available' }
+        $infos = @($data.balance_infos)
+        if ($infos.Count -eq 0) { throw 'DeepSeek 响应 balance_infos 为空' }
         $parts = @()
-        foreach ($b in @($data.balance_infos)) {
+        foreach ($b in $infos) {
           $cur = [string]$b.currency
           $sym = if ($cur -eq 'CNY') { '¥' } elseif ($cur -eq 'USD') { '$' } else { $cur + ' ' }
           $parts += ($sym + [string]$b.total_balance)
@@ -1202,6 +1266,7 @@ function Update-BalanceJob {
         $meta = $model + ' · ' + $(if ($ok) { '可用' } else { '不可用' }) + ' · 双击刷新'
       }
       'openrouter' {
+        if ($null -eq $data.data -or $null -eq $data.data.total_credits -or $null -eq $data.data.total_usage) { throw 'OpenRouter 响应缺少 total_credits/total_usage' }
         $credits = [double]$data.data.total_credits
         $usage = [double]$data.data.total_usage
         $left = $credits - $usage
@@ -1210,6 +1275,7 @@ function Update-BalanceJob {
         $meta = $model + ' · 剩余 · 双击刷新'
       }
       'moonshot' {
+        if ($null -eq $data.data -or $null -eq $data.data.available_balance) { throw 'Moonshot 响应缺少 available_balance' }
         $text = '¥' + [string]$data.data.available_balance
         $meta = $model + ' · 可用 · 双击刷新'
       }
@@ -1253,6 +1319,15 @@ foreach ($target in @($script:FishHost, $script:Bubble)) {
 $script:FishHost.Cursor = [Windows.Input.Cursors]::Hand
 $script:FishHost.Add_MouseEnter({ Set-Hover $true })
 $script:FishHost.Add_MouseLeave({ Set-Hover $false })
+
+# 键盘入口：F10 / 菜单键打开右键菜单，后续可用方向键操作
+$script:Window.Add_KeyDown({
+  param($s, $e)
+  if ($e.Key -eq [Windows.Input.Key]::F10 -or $e.Key -eq [Windows.Input.Key]::Apps) {
+    Show-ContextMenu
+    $e.Handled = $true
+  }
+})
 
 # 右键菜单（WinForms，深色、无图标栏）
 try {
@@ -1618,7 +1693,10 @@ function Toggle-Autostart {
       $cmd = '"' + $wscript + '" "' + $vbs + '"'
       Set-ItemProperty -Path $script:RunKey -Name 'DshFishBuddy' -Value $cmd -Force
     }
-  } catch { }
+  } catch {
+    Write-DebugLog ('autostart error: ' + $_.Exception.Message)
+    try { [void][System.Windows.MessageBox]::Show(('设置开机自启失败：`n' + $_.Exception.Message), 'DSH 大肥鱼', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) } catch { }
+  }
 }
 
 function Toggle-Notify {
@@ -1691,11 +1769,90 @@ function Test-AllowedReleaseUrl([string]$url) {
   }
 }
 
+function Compare-SemVer([string]$a, [string]$b) {
+  $norm = {
+    param($v)
+    $x = $v.Trim()
+    if ($x.StartsWith('v') -or $x.StartsWith('V')) { $x = $x.Substring(1) }
+    return $x.Split('+')[0]
+  }
+  $pa = (& $norm $a).Split('-')
+  $pb = (& $norm $b).Split('-')
+  $na = @($pa[0].Split('.') | ForEach-Object { $n = 0; [void][int]::TryParse(($_ -replace '[^0-9].*$', ''), [ref]$n); $n })
+  $nb = @($pb[0].Split('.') | ForEach-Object { $n = 0; [void][int]::TryParse(($_ -replace '[^0-9].*$', ''), [ref]$n); $n })
+  for ($i = 0; $i -lt 3; $i++) {
+    $x = if ($i -lt $na.Count) { $na[$i] } else { 0 }
+    $y = if ($i -lt $nb.Count) { $nb[$i] } else { 0 }
+    if ($x -gt $y) { return 1 }
+    if ($x -lt $y) { return -1 }
+  }
+  $pra = if ($pa.Count -gt 1) { $pa[1] } else { '' }
+  $prb = if ($pb.Count -gt 1) { $pb[1] } else { '' }
+  if (-not $pra -and -not $prb) { return 0 }
+  if (-not $pra) { return 1 }
+  if (-not $prb) { return -1 }
+  return [string]::CompareOrdinal($pra, $prb)
+}
+
 function Check-Update {
-  $title = 'DSH 大肥鱼 · 检查更新'
+  if ($null -ne $script:UpdateJob) {
+    try {
+      if ($script:UpdateJob.State -eq 'Running' -or $script:UpdateJob.State -eq 'NotStarted') { return }
+    } catch { }
+  }
   try {
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
-    $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/PCYBlurF/dsh-fish-buddy/releases/latest' -Headers @{ 'User-Agent' = 'dsh-fish-buddy' } -TimeoutSec 8
+    $script:UpdateStarted = [DateTime]::Now
+    $script:UpdateJob = Start-Job -ScriptBlock {
+      try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/PCYBlurF/dsh-fish-buddy/releases/latest' -Headers @{ 'User-Agent' = 'dsh-fish-buddy' } -TimeoutSec 8
+        return @{ ok = $true; rel = $rel }
+      } catch {
+        return @{ ok = $false; error = $_.Exception.Message }
+      }
+    }
+  } catch {
+    [void][System.Windows.MessageBox]::Show(('检查更新失败：`n' + $_.Exception.Message), 'DSH 大肥鱼 · 检查更新', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+    return
+  }
+  if ($null -eq $script:UpdateTimer) {
+    $script:UpdateTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $script:UpdateTimer.Interval = [TimeSpan]::FromMilliseconds(300)
+    $script:UpdateTimer.Add_Tick({ Update-CheckJob })
+  }
+  $script:UpdateTimer.Start()
+}
+
+function Update-CheckJob {
+  $title = 'DSH 大肥鱼 · 检查更新'
+  if ($null -eq $script:UpdateJob) { try { $script:UpdateTimer.Stop() } catch { }; return }
+  $state = [string]$script:UpdateJob.State
+  if ($state -eq 'Running' -or $state -eq 'NotStarted') {
+    if (([DateTime]::Now - $script:UpdateStarted).TotalSeconds -gt 10) {
+      try { Stop-Job -Job $script:UpdateJob -ErrorAction SilentlyContinue } catch { }
+      try { Remove-Job -Job $script:UpdateJob -Force -ErrorAction SilentlyContinue } catch { }
+      $script:UpdateJob = $null
+      try { $script:UpdateTimer.Stop() } catch { }
+      [void][System.Windows.MessageBox]::Show('检查更新超时，请检查网络后重试。', $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+    }
+    return
+  }
+  $out = $null
+  try { $out = (@(Receive-Job -Job $script:UpdateJob -ErrorAction Stop) | Select-Object -Last 1) } catch { }
+  try { Remove-Job -Job $script:UpdateJob -Force -ErrorAction SilentlyContinue } catch { }
+  $script:UpdateJob = $null
+  try { $script:UpdateTimer.Stop() } catch { }
+  if ($null -eq $out -or -not $out.ok) {
+    $msg = if ($null -ne $out) { [string]$out.error } else { '空响应' }
+    [void][System.Windows.MessageBox]::Show(("检查更新失败：`n" + $msg), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+    return
+  }
+  $rel = $out.rel
+  try {
+    if ($rel.draft -or $rel.prerelease) {
+      [void][System.Windows.MessageBox]::Show('最新 release 是预发布版本，已跳过。', $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
+      return
+    }
     $latest = [string]$rel.tag_name
     if (-not $latest) {
       [void][System.Windows.MessageBox]::Show('还没有发布版本。', $title)
@@ -1704,7 +1861,10 @@ function Check-Update {
     $currentVersion = Get-WidgetVersion
     $cur = 'v' + $currentVersion
     $isNew = $false
-    try { $isNew = ([version]($latest.TrimStart('v'))).CompareTo([version]$currentVersion) -gt 0 } catch { }
+    try { $isNew = (Compare-SemVer $latest $currentVersion) -gt 0 } catch {
+      [void][System.Windows.MessageBox]::Show(("无法解析版本号：$latest"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+      return
+    }
     if ($isNew) {
       $r = [System.Windows.MessageBox]::Show(("发现新版本 $latest。`n`n当前版本 $cur`n`n是否打开下载页？"), $title, [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
       if ($r -eq [System.Windows.MessageBoxResult]::Yes) {
@@ -2034,6 +2194,9 @@ function Set-Material([string]$m) {
 function Toggle-Sound {
   $script:SoundOn = -not $script:SoundOn
   $script:Ui | Add-Member -NotePropertyName sound -NotePropertyValue ([bool]$script:SoundOn) -Force
+  if ($null -ne $script:TraySoundItem) {
+    try { $script:TraySoundItem.Text = if ($script:SoundOn) { '提醒音：开' } else { '提醒音：关' } } catch { }
+  }
   Save-WindowPos
 }
 
@@ -2081,29 +2244,33 @@ function Apply-State($st) {
     }
     if ($null -ne $found) {
       $session = $found
+      try { $st.session = $found } catch { }
     } else {
-      $script:PinnedSessionId = ''
-      try { $script:Ui | Add-Member -NotePropertyName pinned -NotePropertyValue '' -Force; Save-JsonFile $script:UiPath $script:Ui } catch { }
+      # core 会把 pinned 放进 sessions；暂时没拿到时保留 pin，避免静默取消固定。
+      Write-DebugLog ('pinned session not in current sessions: ' + $script:PinnedSessionId)
     }
   }
   $now = [double](Get-Prop $st 'now')
   if (-not $now) { $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
 
-  # 新完成 → 庆祝 / 提醒
-  $completion = Get-Prop $st 'completion'
-  if ($null -ne $completion) {
+  # 新完成 → 庆祝 / 提醒（支持同一 tick 多个会话完成）
+  $completions = @(Get-Prop $st 'completions')
+  if ($completions.Count -eq 0) {
+    $single = Get-Prop $st 'completion'
+    if ($null -ne $single) { $completions = @($single) }
+  }
+  foreach ($completion in $completions) {
     $cid = [string](Get-Prop $completion 'id')
-    if ($cid -and $cid -ne $script:LastCompletionId) {
-      $isFirst = -not $script:FirstStateSeen
-      $script:LastCompletionId = $cid
-      if (-not $isFirst -and [string](Get-Prop $completion 'reason') -eq 'completed') {
-        $title = [string](Get-Prop $completion 'title')
-        $dur = [double](Get-Prop $completion 'durationMs')
-        Write-DebugLog ("completion celebrate: " + $cid)
-        Start-Celebrate
-        Play-Chime
-        Notify-Completion 'DSH 大肥鱼 · 任务完成' ("$title · 用时 $(Format-Duration $dur)")
-      }
+    if (-not $cid -or $cid -eq $script:LastCompletionId) { continue }
+    $isFirst = -not $script:FirstStateSeen
+    $script:LastCompletionId = $cid
+    if (-not $isFirst -and [string](Get-Prop $completion 'reason') -eq 'completed') {
+      $title = [string](Get-Prop $completion 'title')
+      $dur = [double](Get-Prop $completion 'durationMs')
+      Write-DebugLog ("completion celebrate: " + $cid)
+      Start-Celebrate
+      Play-Chime
+      Notify-Completion 'DSH 大肥鱼 · 任务完成' ("$title · 用时 $(Format-Duration $dur)")
     }
   }
   $script:FirstStateSeen = $true
@@ -2125,7 +2292,7 @@ function Apply-State($st) {
   if (-not $running) {
     if ($reason -eq 'completed' -and $sinceEnd -lt 90000) { Render-Done $session $lastTurn; return }
     if ($reason -eq 'error' -and $sinceEnd -lt 60000) { Render-Error $session $lastTurn; return }
-    if ($reason -eq 'aborted' -and $sinceEnd -lt 30000) { Render-Aborted $session $lastTurn; return }
+    if (($reason -eq 'aborted' -or $reason -eq 'interrupted') -and $sinceEnd -lt 30000) { Render-Aborted $session $lastTurn; return }
     Render-Idle
     return
   }
@@ -2163,7 +2330,7 @@ function Render-Idle {
     $script:TitleText.Text = 'DSH 大肥鱼'
     $script:CountText.Text = ''
     $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
-    Set-Compact $false
+    Set-Compact $script:Collapsed
     $script:TaskText.Text = '待命中，有任务就交给我吧～'
     $script:MetaText.Text = '双击看模型余额'
   }
@@ -2267,15 +2434,15 @@ function Render-Done($session, $lastTurn) {
   if ($null -ne $progress) { $total = [int](Get-Prop $progress 'total'); $done = [int](Get-Prop $progress 'completed') }
   $script:BarTrack.Visibility = if ($total -gt 0) { [Windows.Visibility]::Visible } else { [Windows.Visibility]::Collapsed }
   if ($total -gt 0) {
-    Set-Progress 1.0 $true
-    $script:CountText.Text = "$total/$total"
+    Set-Progress ([Math]::Min(1.0, $done / [Math]::Max(1, $total))) $true
+    $script:CountText.Text = "$done/$total"
   } else {
     $script:CountText.Text = ''
   }
   $script:TaskText.Text = $title
   $dur = if ($null -ne $lastTurn) { [double](Get-Prop $lastTurn 'durationMs') } else { 0 }
   $script:MetaText.Text = '用时 ' + (Format-Duration $dur) + ' · 双击看余额'
-  Set-Compact $false
+  Set-Compact $script:Collapsed
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 任务完成' }
 }
 
@@ -2299,7 +2466,7 @@ function Render-Error($session, $lastTurn) {
   if ($err.Length -gt 60) { $err = $err.Substring(0, 59) + '…' }
   $script:TaskText.Text = $err
   $script:MetaText.Text = '双击查看模型余额'
-  Set-Compact $false
+  Set-Compact $script:Collapsed
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 出错了' }
 }
 
@@ -2320,18 +2487,26 @@ function Render-Aborted($session, $lastTurn) {
   $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
   $script:TaskText.Text = [string](Get-Prop $session 'title')
   $script:MetaText.Text = '等你回来继续～'
-  Set-Compact $false
+  Set-Compact $script:Collapsed
   if ($null -ne $script:Tray) { $script:Tray.Text = 'DSH 大肥鱼 · 已停止' }
 }
 
 # ── 读取状态 ─────────────────────────────────────────────────────────────
-$lastGood = $null
+$script:LastGoodState = $null
+$script:LastStateMtime = [DateTime]::MinValue
 $lastReadFailure = $false
 
 function Read-State {
   try {
+    $fi = Get-Item -LiteralPath $script:StatePath -ErrorAction Stop
+    if ($fi.LastWriteTimeUtc -eq $script:LastStateMtime -and $null -ne $script:LastGoodState) {
+      return $script:LastGoodState
+    }
     $st = Read-JsonFile $script:StatePath
-    if ($null -ne $st) { return $st }
+    if ($null -eq $st) { return $null }
+    if ($null -eq (Get-Prop $st 'v') -or $null -eq (Get-Prop $st 'phase')) { return $null }
+    $script:LastStateMtime = $fi.LastWriteTimeUtc
+    return $st
   } catch { }
   return $null
 }
@@ -2429,9 +2604,9 @@ $script:Tick.Add_Tick({
 
     $st = Read-State
     if ($null -ne $st) {
-      $lastGood = $st
+      $script:LastGoodState = $st
       Apply-State $st
-    } elseif ($null -eq $lastGood) {
+    } elseif ($null -eq $script:LastGoodState) {
       Set-BubbleVisible $true
       Set-Mouth $false
       Set-Alert $false
@@ -2444,7 +2619,7 @@ $script:Tick.Add_Tick({
     }
 
     # 工作中每帧刷新计时
-    if ($script:DisplayedRunning -and $null -ne $script:DisplayedSession) {
+    if ($script:DisplayedRunning -and $null -ne $script:DisplayedSession -and -not $script:BalanceShowing) {
       $started = [double](Get-Prop $script:DisplayedSession 'turnStartedAt')
       if ($started -gt 0) {
         $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()

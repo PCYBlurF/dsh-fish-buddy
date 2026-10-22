@@ -73,20 +73,24 @@ add('DSH 会话', sessionCount > 0, `${sessionCount} 个会话目录`, true);
 const newest = newestSession();
 add('最近会话', Boolean(newest), newest ? `${new Date(newest.mtimeMs).toLocaleString()} · ${path.basename(path.dirname(newest.file))}` : '没有找到 session.v4.jsonl.zstd');
 
-let credentialKey = false;
 let credentialText = '';
 const credentialFile = path.join(DSH_HOME, '.credentials.yaml');
 try {
   credentialText = fs.readFileSync(credentialFile, 'utf8');
-  credentialKey = /^\s*DEEPSEEK_API_KEY:\s*\S+/m.test(credentialText);
   add('DSH 凭据', true, credentialFile);
 } catch {
   add('DSH 凭据', false, `未找到 ${credentialFile}`);
 }
-add('DEEPSEEK_API_KEY', credentialKey, credentialKey ? '已配置（余额可查）' : '未配置（余额会提示未找到）');
-for (const key of ['OPENROUTER_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_API_KEY']) {
-  const found = new RegExp('^\\s*' + key + ':\\s*\\S+', 'm').test(credentialText);
-  add(key, true, found ? '已配置' : '未配置');
+const credentialSource = (key) => {
+  if (process.env[key]) return '环境变量';
+  try {
+    if (new RegExp('^\s*' + key + ':\s*\S+', 'm').test(credentialText)) return '文件';
+  } catch { /* ignore */ }
+  return '';
+};
+for (const key of ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_API_KEY']) {
+  const src = credentialSource(key);
+  add(key, Boolean(src), src ? `已配置（${src}）` : '未配置');
 }
 
 function countFishCores() {
@@ -133,7 +137,7 @@ if (!fs.existsSync(configFile)) {
   try {
     const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
     add('配置文件', true, configFile);
-    const known = new Set(['mascot', 'scale', 'pollMs', 'completionWindowMinutes', 'activeWindowMinutes', 'includeSubagents', 'maxSessionAgeHours', 'dshUrl', 'notify', 'sound', 'tray', 'compact']);
+    const known = new Set(['mascot', 'scale', 'pollMs', 'completionWindowMinutes', 'activeWindowMinutes', 'includeSubagents', 'maxSessionAgeHours', 'tailBytes', 'logMaxBytes', 'dshUrl', 'notify', 'sound', 'tray', 'compact']);
     const unknown = Object.keys(config).filter((key) => !known.has(key));
     add('配置键', unknown.length === 0, unknown.length ? `未知键: ${unknown.join(', ')}` : '无未知键');
     if (config.scale !== undefined) {
@@ -141,6 +145,12 @@ if (!fs.existsSync(configFile)) {
       add('config.scale', Number.isFinite(scale) && scale >= 0.7 && scale <= 1.4, String(config.scale));
     }
     if (config.dshUrl) add('config.dshUrl', isAllowedDshUrl(config.dshUrl), String(config.dshUrl));
+    const ranges = { pollMs: [200, 600000], completionWindowMinutes: [1, 1440], activeWindowMinutes: [1, 20160], maxSessionAgeHours: [1, 168], tailBytes: [65536, 67108864], logMaxBytes: [65536, 67108864] };
+    for (const [key, [min, max]] of Object.entries(ranges)) {
+      if (config[key] === undefined) continue;
+      const n = Number(config[key]);
+      add(`config.${key}`, Number.isFinite(n) && n >= min && n <= max, `${config[key]} (${min}..${max})`);
+    }
   } catch (error) {
     add('配置文件', false, `解析失败: ${error.message}`);
   }
