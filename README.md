@@ -64,7 +64,7 @@ macOS 版不再承诺双击即用；历史版本说明已合并到 [`CHANGELOG.m
 ### 方式一：克隆到 DSH 默认目录（推荐）
 
 ```bat
-git clone https://github.com/<your-name>/dsh-fish-buddy.git "%USERPROFILE%\.dsh\fish-buddy"
+git clone https://github.com/PCYBlurF/dsh-fish-buddy.git "%USERPROFILE%\.dsh\fish-buddy"
 cd /d "%USERPROFILE%\.dsh\fish-buddy"
 install.cmd
 ```
@@ -80,7 +80,7 @@ install.cmd
 ### 方式二：克隆到任意目录
 
 ```bat
-git clone https://github.com/<your-name>/dsh-fish-buddy.git D:\Tools\dsh-fish-buddy
+git clone https://github.com/PCYBlurF/dsh-fish-buddy.git D:\Tools\dsh-fish-buddy
 cd /d D:\Tools\dsh-fish-buddy
 install.cmd
 ```
@@ -235,7 +235,7 @@ DSH 会话日志 (~/.dsh/sessions/**/session.v4.jsonl.zstd)
         │  plugin/index.mjs（DSH 启动时拉起挂件）
 ```
 
-- 只读本机会话日志，不联网、不依赖 DSH API / 端口 / 登录态。
+- **进度读取**只读本机会话日志，不联网、不依赖 DSH API / 端口 / 登录态；**余额查询**会访问 DeepSeek / OpenRouter / Moonshot，**检查更新**会访问 GitHub API，均为手动触发。
 - Windows 版透明区域鼠标穿透；macOS 版按角色/气泡矩形动态穿透（矩形内透明像素仍会拦截）；窗口按内容自适应。
 - 插件只负责在 DSH 启动时叫醒挂件，重复启动会被单实例锁忽略。
 

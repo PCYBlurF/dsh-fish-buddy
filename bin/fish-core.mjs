@@ -387,6 +387,10 @@ function currentTodo(model) {
 
 // ── 会话扫描 ────────────────────────────────────────────────────────────
 const cache = new Map();
+// 全局上限要足够大，避免 40 条子代理日志把主会话挤出候选；
+// 同时按 workspace 限流，防止单个工作区独占候选列表。
+const MAX_SESSION_FILES = 200;
+const MAX_SESSION_FILES_PER_WORKSPACE = 50;
 
 function listSessionFiles() {
   const files = [];
@@ -418,8 +422,19 @@ function listSessionFiles() {
       }
     }
   }
-  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return files.slice(0, 40);
+  const byWorkspace = new Map();
+  for (const f of files) {
+    const ws = path.dirname(path.dirname(f.file));
+    if (!byWorkspace.has(ws)) byWorkspace.set(ws, []);
+    byWorkspace.get(ws).push(f);
+  }
+  const selected = [];
+  for (const list of byWorkspace.values()) {
+    list.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    selected.push(...list.slice(0, MAX_SESSION_FILES_PER_WORKSPACE));
+  }
+  selected.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return selected.slice(0, MAX_SESSION_FILES);
 }
 
 function loadModel(file, mtimeMs, size) {
@@ -450,7 +465,9 @@ function buildState(now) {
   const activeWindow = CONFIG.activeWindowMinutes * 60 * 1000;
   const recent = mains.filter((m) => m.lastEventAt && now - m.lastEventAt < activeWindow);
 
-  const running = recent.filter((m) => m.running).sort((a, b) => b.lastEventAt - a.lastEventAt);
+  // running 必须从全部 mains 中筛，activeWindow 只用于展示排序；
+  // 否则长时间无事件但仍在运行的任务会被误判为 idle。
+  const running = mains.filter((m) => m.running).sort((a, b) => b.lastEventAt - a.lastEventAt);
   const primary = running[0] || recent.sort((a, b) => b.lastEventAt - a.lastEventAt)[0] || null;
 
   // 最近一次“完成”的回合（用于提醒）

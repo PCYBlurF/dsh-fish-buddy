@@ -78,9 +78,9 @@ function launchWindows(ctx, widgetDir) {
 }
 
 export function apply(ctx, config = {}) {
-  // 配置热重载会重复 apply；本次进程只拉起一次
+  // 配置热重载会重复 apply；只允许一次初始化 + 一个看门狗定时器。
+  // 注意：disabled / 依赖缺失 / 启动失败时不要提前置位，否则热重载无法重试。
   if (launched) return;
-  launched = true;
 
   try {
     if (config && config.enabled === false) {
@@ -108,6 +108,7 @@ export function apply(ctx, config = {}) {
       });
       child.unref();
       logInfo(ctx, 'DSH 大肥鱼（macOS）已在桌面待命');
+      launched = true;
       return;
     }
 
@@ -124,6 +125,7 @@ export function apply(ctx, config = {}) {
     }
 
     launchWindows(ctx, widgetDir);
+    launched = true;
 
     const ensure = () => {
       try {

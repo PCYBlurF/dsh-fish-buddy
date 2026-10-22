@@ -165,14 +165,60 @@ for (const item of results) {
   lines.push(`${item.ok ? 'OK  ' : 'FAIL'}  ${item.name}: ${item.detail}`);
 }
 lines.push('', failed === 0 ? '结果: OK' : `结果: ${failed} 个关键项失败`);
+lines.push('诊断包隐私：state.json 仅保留 phase / 会话 id / running / turn / step / 进度计数，不含 title、cwd、todos、errorMessage、goal。');
 console.log(lines.join('\n'));
+
+function redactedStateFile() {
+  const source = path.join(ROOT, 'state.json');
+  if (!fs.existsSync(source)) return null;
+  try {
+    const state = JSON.parse(fs.readFileSync(source, 'utf8'));
+    const progress = (p) => p && typeof p === 'object'
+      ? { total: p.total, completed: p.completed, inProgress: p.inProgress, pending: p.pending }
+      : null;
+    const lastTurn = (t) => t && typeof t === 'object'
+      ? { reason: t.reason, turn: t.turn, endedAt: t.endedAt, durationMs: t.durationMs }
+      : null;
+    const session = (s) => s && typeof s === 'object'
+      ? {
+          id: s.id,
+          provider: s.provider,
+          llmModel: s.llmModel,
+          running: s.running,
+          turn: s.turn,
+          step: s.step,
+          lastEventAt: s.lastEventAt,
+          progress: progress(s.progress),
+          lastTurn: lastTurn(s.lastTurn),
+        }
+      : null;
+    const safe = {
+      v: state.v,
+      now: state.now,
+      phase: state.phase,
+      activeSessions: state.activeSessions,
+      completion: state.completion
+        ? { reason: state.completion.reason, at: state.completion.at, durationMs: state.completion.durationMs }
+        : null,
+      session: session(state.session),
+      sessions: Array.isArray(state.sessions) ? state.sessions.map(session) : [],
+    };
+    const dir = path.join(ROOT, 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'state.redacted.json');
+    fs.writeFileSync(file, `${JSON.stringify(safe, null, 2)}\n`);
+    return file;
+  } catch {
+    return null;
+  }
+}
 
 function diagnosticFiles(reportFile) {
   const files = [reportFile];
-  for (const name of ['state.json', 'config.json']) {
-    const file = path.join(ROOT, name);
-    if (fs.existsSync(file)) files.push(file);
-  }
+  const redactedState = redactedStateFile();
+  if (redactedState) files.push(redactedState);
+  const config = path.join(ROOT, 'config.json');
+  if (fs.existsSync(config)) files.push(config);
   const ui = path.join(ROOT, 'mac', 'ui-mac.json');
   if (fs.existsSync(ui)) files.push(ui);
   const logsDir = path.join(ROOT, 'logs');

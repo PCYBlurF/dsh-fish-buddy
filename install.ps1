@@ -31,10 +31,6 @@ Write-Host "DSH 大肥鱼安装器"
 Write-Host "  仓库目录：$repo"
 Write-Host "  配置文件：$patch"
 
-# stop any running instance so the new path takes effect
-$stop = Join-Path $repo 'bin\stop-fish.ps1'
-if (Test-Path -LiteralPath $stop) { & $stop | Out-Null }
-
 $begin = '# >>> dsh-fish-buddy >>>'
 $end = '# <<< dsh-fish-buddy <<<'
 $text = [System.IO.File]::ReadAllText($patch)
@@ -43,7 +39,13 @@ $text = [System.IO.File]::ReadAllText($patch)
 $bi = $text.IndexOf($begin)
 if ($bi -ge 0) {
   $ei = $text.IndexOf($end, $bi)
-  if ($ei -ge 0) { $ei += $end.Length } else { $ei = $text.Length }
+  if ($ei -lt 0) {
+    Write-Host "配置文件中的 dsh-fish-buddy 块不完整（只有开始标记，缺少结束标记）：" -ForegroundColor Red
+    Write-Host "  $patch" -ForegroundColor Red
+    Write-Host "为避免截断配置，安装已中止；请手动修复该块后重试。" -ForegroundColor Red
+    exit 1
+  }
+  $ei += $end.Length
   $text = $text.Substring(0, $bi).TrimEnd() + "`n" + $text.Substring($ei).TrimStart()
 }
 
@@ -52,7 +54,12 @@ $legacy = '# ' + [char]0x2500 + [char]0x2500 + ' DSH ' + [char]0x5C0F + [char]0x
 $li = $text.IndexOf($legacy)
 if ($li -ge 0) { $text = $text.Substring(0, $li).TrimEnd() + "`n" }
 
-$backup = "$patch.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+# stop any running instance only after the profile passed validation,
+# so a broken managed block never costs the user a running widget
+$stop = Join-Path $repo 'bin\stop-fish.ps1'
+if (Test-Path -LiteralPath $stop) { & $stop | Out-Null }
+
+$backup = "$patch.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
 Copy-Item -LiteralPath $patch -Destination $backup -Force
 
 $pluginPath = (Join-Path $repo 'plugin\index.mjs') -replace '\\', '/'
@@ -68,7 +75,14 @@ $end
 "@
 
 $newText = $text.TrimEnd() + "`n`n" + $block + "`n"
-[System.IO.File]::WriteAllText($patch, $newText, (New-Object System.Text.UTF8Encoding($false)))
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+$tmp = "$patch.tmp-" + [guid]::NewGuid().ToString('N')
+[System.IO.File]::WriteAllText($tmp, $newText, $utf8)
+try {
+  [System.IO.File]::Replace($tmp, $patch, $null)
+} catch {
+  Move-Item -LiteralPath $tmp -Destination $patch -Force
+}
 Write-Host "  已写入插件配置（备份：$backup）" -ForegroundColor Green
 
 if (-not $NoStart) {

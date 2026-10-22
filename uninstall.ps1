@@ -13,19 +13,23 @@ $repo = $PSScriptRoot
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $patch = Join-Path $dshHome 'profiles\desktop\cordis.patch.yml'
 
-$stop = Join-Path $repo 'bin\stop-fish.ps1'
-if (Test-Path -LiteralPath $stop) { & $stop | Out-Null }
+$begin = '# >>> dsh-fish-buddy >>>'
+$end = '# <<< dsh-fish-buddy <<<'
+$changed = $false
 
 if (Test-Path -LiteralPath $patch) {
-  $begin = '# >>> dsh-fish-buddy >>>'
-  $end = '# <<< dsh-fish-buddy <<<'
   $text = [System.IO.File]::ReadAllText($patch)
-  $changed = $false
 
   $bi = $text.IndexOf($begin)
   if ($bi -ge 0) {
     $ei = $text.IndexOf($end, $bi)
-    if ($ei -ge 0) { $ei += $end.Length } else { $ei = $text.Length }
+    if ($ei -lt 0) {
+      Write-Host "配置文件中的 dsh-fish-buddy 块不完整（只有开始标记，缺少结束标记）：" -ForegroundColor Red
+      Write-Host "  $patch" -ForegroundColor Red
+      Write-Host "为避免截断配置，卸载已中止；请手动修复该块后重试。" -ForegroundColor Red
+      exit 1
+    }
+    $ei += $end.Length
     $text = $text.Substring(0, $bi).TrimEnd() + "`n" + $text.Substring($ei).TrimStart()
     $changed = $true
   }
@@ -39,16 +43,26 @@ if (Test-Path -LiteralPath $patch) {
   }
 
   if ($changed) {
-    $backup = "$patch.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    $backup = "$patch.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
     Copy-Item -LiteralPath $patch -Destination $backup -Force
-    [System.IO.File]::WriteAllText($patch, $text.TrimEnd() + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $tmp = "$patch.tmp-" + [guid]::NewGuid().ToString('N')
+    [System.IO.File]::WriteAllText($tmp, $text.TrimEnd() + "`n", $utf8)
+    try {
+      [System.IO.File]::Replace($tmp, $patch, $null)
+    } catch {
+      Move-Item -LiteralPath $tmp -Destination $patch -Force
+    }
     Write-Host "已移除插件配置（备份：$backup）" -ForegroundColor Green
   } else {
-    Write-Host "插件配置本来就不存在。"
+    Write-Host "未找到 dsh-fish-buddy 配置块，profile 未修改。"
   }
 } else {
   Write-Host "找不到 desktop profile 配置：$patch"
 }
+
+$stop = Join-Path $repo 'bin\stop-fish.ps1'
+if (Test-Path -LiteralPath $stop) { & $stop | Out-Null }
 
 if (-not $KeepAutoStart) {
   try {

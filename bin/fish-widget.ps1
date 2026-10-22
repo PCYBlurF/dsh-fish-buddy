@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.14'
+$script:Version = '0.1.15'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -134,7 +134,17 @@ $script:PetUntil = [DateTime]::MinValue
 $script:PendingResize = $false
 $script:DisplayedSession = $null
 $script:DisplayedRunning = $false
-$script:LastReconnectAt = [DateTime]::MinValue
+$script:LastReconnectAt = [DateTime]::Now
+$script:CoreStartedAt = [DateTime]::MinValue
+$script:StaleSeconds = 12.0
+$script:CoreWarmupSeconds = 20.0
+try {
+  $pollMs = [double]$script:Config.pollMs
+  if ($pollMs -ge 200 -and $pollMs -le 600000) {
+    $script:StaleSeconds = [Math]::Max(12.0, [Math]::Ceiling($pollMs * 3.0 / 1000.0) + 5.0)
+  }
+} catch { }
+$script:CoreWarmupSeconds = [Math]::Max(20.0, $script:StaleSeconds)
 
 $script:Mascot = 'chibi'
 try { if ($script:Config.mascot) { $script:Mascot = [string]$script:Config.mascot } } catch { }
@@ -354,6 +364,8 @@ function Start-Core {
     $psi.WorkingDirectory = $script:AppDir
     $script:CoreProc = [System.Diagnostics.Process]::Start($psi)
     $script:CoreRestarts++
+    $script:CoreStartedAt = [DateTime]::Now
+    $script:LastReconnectAt = [DateTime]::Now
     Write-DebugLog ("core started pid={0}" -f $script:CoreProc.Id)
   } catch { }
 }
@@ -1620,9 +1632,24 @@ function Get-WidgetVersion {
   return $script:Version
 }
 
+function Test-AllowedReleaseUrl([string]$url) {
+  try {
+    if ([string]::IsNullOrWhiteSpace($url)) { return $false }
+    $u = [Uri]$url
+    if ($u.Scheme -ne 'https') { return $false }
+    if ($u.Host -ne 'github.com') { return $false }
+    if (-not [string]::IsNullOrEmpty($u.UserInfo)) { return $false }
+    if (-not $u.AbsolutePath.StartsWith('/PCYBlurF/dsh-fish-buddy/releases/')) { return $false }
+    return $true
+  } catch {
+    return $false
+  }
+}
+
 function Check-Update {
   $title = 'DSH 大肥鱼 · 检查更新'
   try {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
     $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/PCYBlurF/dsh-fish-buddy/releases/latest' -Headers @{ 'User-Agent' = 'dsh-fish-buddy' } -TimeoutSec 8
     $latest = [string]$rel.tag_name
     if (-not $latest) {
@@ -1636,7 +1663,12 @@ function Check-Update {
     if ($isNew) {
       $r = [System.Windows.MessageBox]::Show(("发现新版本 $latest。`n`n当前版本 $cur`n`n是否打开下载页？"), $title, [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
       if ($r -eq [System.Windows.MessageBoxResult]::Yes) {
-        try { Start-Process $rel.html_url | Out-Null } catch { }
+        $downloadUrl = [string]$rel.html_url
+        if (Test-AllowedReleaseUrl $downloadUrl) {
+          try { Start-Process $downloadUrl | Out-Null } catch { }
+        } else {
+          [void][System.Windows.MessageBox]::Show(("下载页地址未通过校验，已拒绝打开：`n$downloadUrl"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+        }
       }
     } else {
       [void][System.Windows.MessageBox]::Show(("当前已是最新版本 $cur。"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
@@ -2267,8 +2299,10 @@ $script:Tick.Add_Tick({
     if (-not $NoCore) {
       $age = 999.0
       try { $age = ([DateTime]::Now - (Get-Item -LiteralPath $script:StatePath).LastWriteTime).TotalSeconds } catch { }
-      if ($age -gt 9) {
-        if (([DateTime]::Now - $script:LastReconnectAt).TotalSeconds -gt 12) {
+      $sinceStart = 999.0
+      try { $sinceStart = ([DateTime]::Now - $script:CoreStartedAt).TotalSeconds } catch { }
+      if ($age -gt $script:StaleSeconds -and $sinceStart -gt $script:CoreWarmupSeconds) {
+        if (([DateTime]::Now - $script:LastReconnectAt).TotalSeconds -gt $script:StaleSeconds) {
           $script:LastReconnectAt = [DateTime]::Now
           Write-DebugLog ("state stale {0:N1}s, restart core" -f $age)
           Stop-Core
