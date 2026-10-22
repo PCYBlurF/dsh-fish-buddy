@@ -19,7 +19,9 @@ const errors = [];
 if (!psMatch) errors.push('fish-widget.ps1: $script:Version not found');
 else if (psMatch[1] !== version) errors.push(`fish-widget.ps1: ${psMatch[1]} != ${version}`);
 if (mac.version !== version) errors.push(`mac/package.json: ${mac.version} != ${version}`);
-if (!changelog.includes(`## ${version}`)) errors.push(`CHANGELOG.md: missing "## ${version}"`);
+const escapedVersion = version.split('.').join('\\.');
+const changelogHeading = new RegExp('^##\\s+' + escapedVersion + '(?:\\s|$)', 'm');
+if (!changelogHeading.test(changelog)) errors.push(`CHANGELOG.md: missing exact "## ${version}" heading`);
 
 if (errors.length > 0) {
   for (const error of errors) console.error(`FAIL ${error}`);

@@ -40,7 +40,7 @@ try {
 
 # ── 单实例 ───────────────────────────────────────────────────────────────
 Write-DebugLog ("boot pid=$PID dir=" + $script:AppDir)
-$script:Mutex = New-Object System.Threading.Mutex($false, 'Local\DshFishBuddyWidget')
+$script:Mutex = New-Object System.Threading.Mutex($false, 'Global\DshFishBuddyWidget')
 if (-not ($Preview -or $Shot)) {
   $got = $false
   try {
@@ -119,7 +119,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.15'
+$script:Version = '0.1.16'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -134,6 +134,10 @@ $script:PetUntil = [DateTime]::MinValue
 $script:PendingResize = $false
 $script:DisplayedSession = $null
 $script:DisplayedRunning = $false
+$script:WindowHidden = $false
+$script:HitHookRegistered = $false
+$script:HitSource = $null
+$script:HitHook = $null
 $script:LastReconnectAt = [DateTime]::Now
 $script:CoreStartedAt = [DateTime]::MinValue
 $script:StaleSeconds = 12.0
@@ -299,6 +303,11 @@ function Set-Sprite([string]$name, [int]$intervalMs) {
   $script:CurrentSprite = $name
   $script:FrameIndex = 0
   try { $script:MascotImage.Source = $frames[0] } catch { }
+  try {
+    $script:MascotImage.InvalidateMeasure()
+    $script:MascotImage.InvalidateArrange()
+    $script:Window.UpdateLayout()
+  } catch { }
   $script:FrameTimer.Interval = [TimeSpan]::FromMilliseconds($intervalMs)
   if ($frames.Count -gt 1) {
     if (-not $script:FrameTimer.IsEnabled) { $script:FrameTimer.Start() }
@@ -352,9 +361,6 @@ function Start-Core {
   if ($script:CoreRestarts -ge 5) { return }
   $node = Get-NodePath
   if ($null -eq $node) { return }
-  try {
-    Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*fish-core.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  } catch { }
   try {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $node
@@ -453,7 +459,7 @@ function Apply-MascotScale([double]$s, [bool]$save) {
 }
 
 # ── 窗口位置 ─────────────────────────────────────────────────────────────
-$script:WorkArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$script:WorkArea = [System.Windows.SystemParameters]::WorkArea
 $metrics = Get-MascotSize $script:Scale
 $script:Window.Width = $metrics.W
 $script:Window.Height = $metrics.H
@@ -568,23 +574,38 @@ function Set-Compact([bool]$compact) {
   $script:MetaText.Visibility = $vis
 }
 
-function Start-Loops {
-  foreach ($sb in @($script:SbSway, $script:SbTail, $script:SbFin, $script:SbBob)) {
+function Set-DesiredFrameRates {
+  foreach ($sb in @($script:SbBob, $script:SbCelebrate, $script:SbSparkle, $script:SbBubbles, $script:SbDot, $script:SbBlink, $script:SbSway, $script:SbTail, $script:SbFin)) {
     if ($null -ne $sb) {
-      try { $sb.Begin($script:Window) } catch { }
+      try { [System.Windows.Media.Animation.Timeline]::SetDesiredFrameRate($sb, 30) } catch { }
     }
   }
 }
 
+function Set-LoopAnimations([bool]$on) {
+  if ($on -and $script:WindowHidden) { return }
+  foreach ($sb in @($script:SbSway, $script:SbTail, $script:SbFin, $script:SbBob)) {
+    if ($null -eq $sb) { continue }
+    try {
+      if ($on) { $sb.Begin($script:Window, $true) } else { $sb.Stop($script:Window) }
+    } catch { }
+  }
+}
+
+function Start-Loops {
+  Set-DesiredFrameRates
+  Set-LoopAnimations $true
+}
+
 function Toggle-Bubbles([bool]$on) {
   try {
-    if ($on) { $script:SbBubbles.Begin($script:Window) } else { $script:SbBubbles.Stop($script:Window) }
+    if ($on) { $script:SbBubbles.Begin($script:Window, $true) } else { $script:SbBubbles.Stop($script:Window) }
   } catch { }
 }
 
 function Toggle-DotPulse([bool]$on) {
   try {
-    if ($on) { $script:SbDot.Begin($script:Window) } else { $script:SbDot.Stop($script:Window); $script:Dot.Opacity = 1.0 }
+    if ($on) { $script:SbDot.Begin($script:Window, $true) } else { $script:SbDot.Stop($script:Window); $script:Dot.Opacity = 1.0 }
   } catch { }
 }
 
@@ -622,15 +643,28 @@ $script:HotkeySource = $null
 $script:HotkeyHandler = $null
 $script:HotkeyId = 0x4A01
 
+function Hide-FishWindow {
+  $script:WindowHidden = $true
+  Set-LoopAnimations $false
+  try { $script:Window.Hide() } catch { }
+}
+
+function Show-FishWindow {
+  $script:WindowHidden = $false
+  try {
+    $script:Window.Show()
+    $script:Window.Activate()
+  } catch { }
+}
+
 function Toggle-FishWindow {
   if ($null -eq $script:Window) { return }
   try {
     if ($script:Window.IsVisible) {
-      $script:Window.Hide()
+      Hide-FishWindow
       Write-DebugLog 'hotkey hide'
     } else {
-      $script:Window.Show()
-      $script:Window.Activate()
+      Show-FishWindow
       Write-DebugLog 'hotkey show'
     }
   } catch {
@@ -851,10 +885,21 @@ function Test-WindowOnScreen {
     if ($w -le 0) { $w = [double]$script:Window.Width }
     if ($h -le 0) { $h = [double]$script:Window.Height }
     if ($w -le 0 -or $h -le 0) { return $false }
+    $sx = 1.0; $sy = 1.0
+    try {
+      $source = [System.Windows.PresentationSource]::FromVisual($script:Window)
+      if ($null -ne $source -and $null -ne $source.CompositionTarget) {
+        $m = $source.CompositionTarget.TransformToDevice
+        if ($m.M11 -gt 0) { $sx = $m.M11 }
+        if ($m.M22 -gt 0) { $sy = $m.M22 }
+      }
+    } catch { }
     foreach ($s in [System.Windows.Forms.Screen]::AllScreens) {
       $a = $s.WorkingArea
-      $ix = [Math]::Min($l + $w, $a.Right) - [Math]::Max($l, $a.Left)
-      $iy = [Math]::Min($t + $h, $a.Bottom) - [Math]::Max($t, $a.Top)
+      $al = $a.Left / $sx; $at = $a.Top / $sy
+      $ar = $a.Right / $sx; $ab = $a.Bottom / $sy
+      $ix = [Math]::Min($l + $w, $ar) - [Math]::Max($l, $al)
+      $iy = [Math]::Min($t + $h, $ab) - [Math]::Max($t, $at)
       if ($ix -ge 40 -and $iy -ge 40) { return $true }
     }
   } catch { }
@@ -1745,7 +1790,7 @@ $script:GlassFallback.EndPoint = New-Object Windows.Point(0.35, 1)
 [void]$script:GlassFallback.GradientStops.Add((New-Object Windows.Media.GradientStop -ArgumentList ([Windows.Media.Color]::FromArgb(150, 16, 26, 48)), 1))
 
 function Get-BubbleRect {
-  if ($null -eq $script:Bubble -or -not $script:Window.IsVisible) {
+  if ($null -eq $script:Bubble -or -not $script:Window.IsVisible -or -not $script:Bubble.IsVisible) {
     return ''
   }
   try {
@@ -1756,6 +1801,56 @@ function Get-BubbleRect {
     if ($w -lt 20 -or $h -lt 20) { return '' }
     return ("{0},{1},{2},{3}" -f [int]$pt.X, [int]$pt.Y, $w, $h)
   } catch { Write-DebugLog ("rect error: " + $_.Exception.Message); return '' }
+}
+
+function Get-MascotRect {
+  if ($null -eq $script:MascotImage -or -not $script:Window.IsVisible -or -not $script:MascotImage.IsVisible) {
+    return ''
+  }
+  try {
+    $dpi = [Windows.Media.VisualTreeHelper]::GetDpi($script:MascotImage)
+    $pt = $script:MascotImage.PointToScreen([Windows.Point]::new(0, 0))
+    $w = [int]($script:MascotImage.ActualWidth * $dpi.DpiScaleX)
+    $h = [int]($script:MascotImage.ActualHeight * $dpi.DpiScaleY)
+    if ($w -lt 20 -or $h -lt 20) { return '' }
+    return ("{0},{1},{2},{3}" -f [int]$pt.X, [int]$pt.Y, $w, $h)
+  } catch {
+    return ''
+  }
+}
+
+function Register-HitTest {
+  if ($script:HitHookRegistered) { return }
+  try {
+    $helper = New-Object System.Windows.Interop.WindowInteropHelper($script:Window)
+    $hwnd = $helper.Handle
+    if ($hwnd -eq [IntPtr]::Zero) { return }
+    $source = [System.Windows.Interop.HwndSource]::FromHwnd($hwnd)
+    if ($null -eq $source) { return }
+    $script:HitSource = $source
+    $script:HitHook = [System.Windows.Interop.HwndSourceHook]{
+      param($h, $msg, $w, $l, [ref]$handled)
+      if ($msg -ne 0x84) { return [IntPtr]::Zero }
+      $x = [int]($l -band 0xFFFF); if ($x -ge 0x8000) { $x -= 0x10000 }
+      $y = [int](($l -shr 16) -band 0xFFFF); if ($y -ge 0x8000) { $y -= 0x10000 }
+      $inside = $false
+      foreach ($rect in @((Get-BubbleRect), (Get-MascotRect))) {
+        if ([string]::IsNullOrEmpty($rect)) { continue }
+        $p = $rect.Split(',')
+        if ($p.Count -lt 4) { continue }
+        $rx = [int]$p[0]; $ry = [int]$p[1]; $rw = [int]$p[2]; $rh = [int]$p[3]
+        if ($x -ge $rx -and $x -le ($rx + $rw) -and $y -ge $ry -and $y -le ($ry + $rh)) { $inside = $true; break }
+      }
+      $handled.Value = $true
+      if ($inside) { return [IntPtr]::Zero }
+      return [IntPtr](-1)
+    }
+    [void]$source.AddHook($script:HitHook)
+    $script:HitHookRegistered = $true
+    Write-DebugLog 'hit-test hook installed'
+  } catch {
+    Write-DebugLog ('hit-test error: ' + $_.Exception.Message)
+  }
 }
 
 $script:GlassLive = New-Object Windows.Media.LinearGradientBrush
@@ -1917,7 +2012,7 @@ function Show-ContextMenu {
   [void](Add-ContextItem '打开说明' { try { Start-Process (Join-Path $script:AppDir 'README.md') | Out-Null } catch { } })
   [void](Add-SettingsMenu)
   [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-  [void](Add-ContextItem '干脆躲起来（托盘恢复）' { $script:Window.Hide() })
+  [void](Add-ContextItem '干脆躲起来（托盘恢复）' { Hide-FishWindow })
   [void](Add-ContextItem '退出大肥鱼' { Exit-FishWidget })
   try { Set-MenuTheme $script:Menu $script:Material } catch { Write-DebugLog ('menu theme error: ' + $_.Exception.Message) }
   try { $script:Menu.Show([System.Windows.Forms.Cursor]::Position) } catch { Write-DebugLog ('menu show error: ' + $_.Exception.Message) }
@@ -2049,6 +2144,7 @@ function Set-BubbleVisible([bool]$visible) {
 function Render-Idle {
   if ($script:BalanceShowing) { return }
   $script:LastSignature = ''
+  Set-LoopAnimations $false
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Stop-Celebrate
@@ -2058,8 +2154,8 @@ function Render-Idle {
   if ($null -eq $script:IdleSince) { $script:IdleSince = [DateTime]::Now }
   $idleFor = ([DateTime]::Now - $script:IdleSince).TotalSeconds
   if ([DateTime]::Now -lt $script:PetUntil) { Set-Sprite 'celebrate' 150 }
-  elseif ($idleFor -gt 25) { Set-Sprite 'sleep' 900 }
-  else { Set-Sprite 'idle' 560 }
+  elseif ($idleFor -gt 25) { Set-Sprite 'sleep' 1500 }
+  else { Set-Sprite 'idle' 1100 }
   if ($idleFor -gt 12) {
     Hide-Bubble
   } else {
@@ -2077,6 +2173,7 @@ function Render-Idle {
 function Render-Working($session, [double]$now) {
   if ($script:BalanceShowing) { return }
   $script:IdleSince = $null
+  Set-LoopAnimations $true
   Toggle-Bubbles $true
   Toggle-DotPulse $true
   Stop-Celebrate
@@ -2152,12 +2249,13 @@ function Render-Working($session, [double]$now) {
 
 function Render-Done($session, $lastTurn) {
   if ($script:BalanceShowing) { return }
+  Set-LoopAnimations $false
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Set-Mouth $false
   Set-Alert $false
   $endedFor = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [double](Get-Prop $lastTurn 'endedAt')
-  if (([DateTime]::Now -lt $script:PetUntil) -or $endedFor -lt 7000) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'idle' 560 }
+  if (([DateTime]::Now -lt $script:PetUntil) -or $endedFor -lt 7000) { Set-Sprite 'celebrate' 150 } else { Set-Sprite 'idle' 1100 }
   Set-DotColor '#3DDC97'
   Set-BubbleVisible $true
   $script:IdleSince = $null
@@ -2183,6 +2281,7 @@ function Render-Done($session, $lastTurn) {
 
 function Render-Error($session, $lastTurn) {
   if ($script:BalanceShowing) { return }
+  Set-LoopAnimations $false
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Stop-Celebrate
@@ -2206,6 +2305,7 @@ function Render-Error($session, $lastTurn) {
 
 function Render-Aborted($session, $lastTurn) {
   if ($script:BalanceShowing) { return }
+  Set-LoopAnimations $false
   Toggle-Bubbles $false
   Toggle-DotPulse $false
   Stop-Celebrate
@@ -2301,6 +2401,11 @@ $script:Tick.Add_Tick({
       try { $age = ([DateTime]::Now - (Get-Item -LiteralPath $script:StatePath).LastWriteTime).TotalSeconds } catch { }
       $sinceStart = 999.0
       try { $sinceStart = ([DateTime]::Now - $script:CoreStartedAt).TotalSeconds } catch { }
+      # 稳定运行 60 秒后重置重启预算，避免预算耗尽后永久卡在“正在重新连接”。
+      if ($null -ne $script:CoreProc -and -not $script:CoreProc.HasExited -and $script:CoreRestarts -gt 0 -and $age -lt $script:StaleSeconds -and $sinceStart -gt 60) {
+        $script:CoreRestarts = 0
+        Write-DebugLog 'core stable, restart budget reset'
+      }
       if ($age -gt $script:StaleSeconds -and $sinceStart -gt $script:CoreWarmupSeconds) {
         if (([DateTime]::Now - $script:LastReconnectAt).TotalSeconds -gt $script:StaleSeconds) {
           $script:LastReconnectAt = [DateTime]::Now
@@ -2366,6 +2471,7 @@ $script:Window.Add_Loaded({
     Show-Bubble
     if ($script:Material -eq 'white' -or $script:Material -eq 'glass') { Apply-Material }
     Ensure-OnScreen
+    Register-HitTest
     Register-Hotkey
   } catch { }
 })

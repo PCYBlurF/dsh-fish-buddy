@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(BIN_DIR, '..');
 const ZSTD_MAGIC = 0xfd2fb528;
+const MAX_DECOMPRESSED = 32 * 1024 * 1024;
+const ZSTD_MAGIC_BUFFER = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 
 const DEFAULTS = {
   pollMs: 600,
@@ -48,6 +50,8 @@ const CONFIG_PATH = ARGS.config ? path.resolve(ARGS.config) : path.join(APP_DIR,
 const STATE_PATH = ARGS.state ? path.resolve(ARGS.state) : path.join(APP_DIR, 'state.json');
 const LOG_PATH = path.join(APP_DIR, 'logs', 'core.log');
 
+const CONFIG_WARNINGS = [];
+
 function loadConfig() {
   let user = {};
   try {
@@ -55,7 +59,31 @@ function loadConfig() {
   } catch {
     /* 首次运行没有配置 */
   }
-  const cfg = { ...DEFAULTS, ...(user && typeof user === 'object' ? user : {}) };
+  const source = user && typeof user === 'object' ? user : {};
+  const numberOption = (key, min, max, integer = false) => {
+    const raw = source[key];
+    if (raw === undefined) return DEFAULTS[key];
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < min || n > max) {
+      CONFIG_WARNINGS.push(`config.${key}=${JSON.stringify(raw)} 非法，回退 ${DEFAULTS[key]}`);
+      return DEFAULTS[key];
+    }
+    return integer ? Math.round(n) : n;
+  };
+  const cfg = {
+    pollMs: numberOption('pollMs', 200, 600000, true),
+    maxSessionAgeHours: numberOption('maxSessionAgeHours', 1, 168),
+    tailBytes: numberOption('tailBytes', 64 * 1024, 64 * 1024 * 1024, true),
+    completionWindowMinutes: numberOption('completionWindowMinutes', 1, 1440),
+    activeWindowMinutes: numberOption('activeWindowMinutes', 1, 1440),
+    logMaxBytes: numberOption('logMaxBytes', 64 * 1024, 16 * 1024 * 1024, true),
+    dshUrl: DEFAULTS.dshUrl,
+  };
+  if (source.dshUrl !== undefined && typeof source.dshUrl !== 'string') {
+    CONFIG_WARNINGS.push('config.dshUrl 非法，回退空值');
+  } else if (typeof source.dshUrl === 'string') {
+    cfg.dshUrl = source.dshUrl;
+  }
   if (process.env.DSH_WEB_URL) cfg.dshUrl = process.env.DSH_WEB_URL;
   else if (!cfg.dshUrl) cfg.dshUrl = 'http://127.0.0.1:11821';
   return cfg;
@@ -82,6 +110,8 @@ function log(message) {
     /* ignore */
   }
 }
+
+for (const warning of CONFIG_WARNINGS) log(warning);
 
 // ── zstd 分帧解析 ────────────────────────────────────────────────────────
 /** 跳过一个 zstd 帧，返回帧结束偏移；帧不完整时返回 -1。 */
@@ -119,26 +149,36 @@ function skipFrame(buf, start) {
 /** 解压一段（可能是多个）zstd 帧拼接的文本。 */
 function decodeZstdFrames(buf, startAt) {
   const chunks = [];
+  let total = 0;
   let off = startAt;
   while (off + 4 <= buf.length) {
     if (buf.readUInt32LE(off) !== ZSTD_MAGIC) break;
     const end = skipFrame(buf, off);
     if (end < 0) break;
+    let chunk;
     try {
-      chunks.push(zlib.zstdDecompressSync(buf.subarray(off, end)));
-    } catch {
+      chunk = zlib.zstdDecompressSync(buf.subarray(off, end), { maxOutputLength: MAX_DECOMPRESSED });
+    } catch (error) {
+      // 帧边界已知时跳过坏帧，继续解析后续帧，避免一条坏帧永久卡死进度。
+      log(`zstd 坏帧 offset=${off} end=${end}: ${error.message}`);
+      off = end;
+      continue;
+    }
+    if (total + chunk.length > MAX_DECOMPRESSED) {
+      log(`zstd 解压内容超过 ${MAX_DECOMPRESSED} 字节，停止解析`);
       break;
     }
+    chunks.push(chunk);
+    total += chunk.length;
     off = end;
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return { text: Buffer.concat(chunks).toString('utf8'), end: off };
 }
 
 /** 读取文件尾部（最多 tailBytes），在首个完整帧边界开始解析。 */
-function readSessionEvents(file) {
-  const st = fs.statSync(file);
-  const start = Math.max(0, st.size - CONFIG.tailBytes);
-  const length = st.size - start;
+function decodeZstdChunk(file, start, end, carry, useCarry) {
+  const length = end - start;
+  if (length <= 0) return { events: [], carry, frameEnd: start };
   const buf = Buffer.alloc(length);
   const fd = fs.openSync(file, 'r');
   try {
@@ -146,18 +186,18 @@ function readSessionEvents(file) {
   } finally {
     fs.closeSync(fd);
   }
-
   let frameStart = 0;
   if (start > 0) {
-    // 从文件中间开始时，定位到第一个帧魔数
-    const magic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
-    const idx = buf.indexOf(magic);
-    if (idx < 0) return [];
+    const idx = buf.indexOf(ZSTD_MAGIC_BUFFER);
+    if (idx < 0) return { events: [], carry, frameEnd: start };
     frameStart = idx;
   }
-  const text = decodeZstdFrames(buf, frameStart);
+  const decoded = decodeZstdFrames(buf, frameStart);
+  const text = (useCarry ? carry : '') + decoded.text;
+  const lines = text.split('\n');
+  const nextCarry = lines.pop() || '';
   const events = [];
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
     if (!line) continue;
     try {
       events.push(JSON.parse(line));
@@ -165,7 +205,22 @@ function readSessionEvents(file) {
       /* 忽略半行 */
     }
   }
-  return events;
+  return { events, carry: nextCarry, frameEnd: start + decoded.end };
+}
+
+function readSessionEvents(file, options = {}) {
+  const st = fs.statSync(file);
+  if (options.from !== undefined) {
+    return decodeZstdChunk(file, Math.max(0, options.from), st.size, options.carry || '', true);
+  }
+  const tailStart = Math.max(0, st.size - CONFIG.tailBytes);
+  if (tailStart > 256 * 1024) {
+    // 长会话：读取头部元数据/标题 + 尾部最近事件，避免 #39 的标题丢失。
+    const head = decodeZstdChunk(file, 0, 256 * 1024, '', false);
+    const tail = decodeZstdChunk(file, tailStart, st.size, '', true);
+    return { events: head.events.concat(tail.events), carry: tail.carry, frameEnd: tail.frameEnd };
+  }
+  return decodeZstdChunk(file, 0, st.size, '', false);
 }
 
 // ── 会话模型 ────────────────────────────────────────────────────────────
@@ -202,8 +257,8 @@ function toolSummary(name, argsText) {
   return name ? shortText(name, 40) : '';
 }
 
-function modelFromEvents(events) {
-  const model = {
+function createModel() {
+  return {
     id: null,
     cwd: null,
     depth: 0,
@@ -226,10 +281,11 @@ function modelFromEvents(events) {
     lastUserAt: 0,
     errorMessage: null,
   };
+}
 
-  for (const o of events) {
-    if (!o || typeof o !== 'object') continue;
-    const t = o.type;
+function applyEvent(model, o) {
+  if (!o || typeof o !== 'object') return;
+  const t = o.type;
     const at = typeof o.time === 'number' ? o.time : 0;
     if (at > model.lastEventAt) {
       model.lastEventAt = at;
@@ -347,7 +403,11 @@ function modelFromEvents(events) {
       default:
         break;
     }
-  }
+}
+
+function modelFromEvents(events) {
+  const model = createModel();
+  for (const o of events) applyEvent(model, o);
   return model;
 }
 
@@ -440,10 +500,20 @@ function listSessionFiles() {
 function loadModel(file, mtimeMs, size) {
   const hit = cache.get(file);
   if (hit && hit.mtimeMs === mtimeMs && hit.size === size) return hit.model;
-  const events = readSessionEvents(file);
-  const model = modelFromEvents(events);
+  if (hit && hit.frameEnd > 0 && hit.frameEnd <= size) {
+    try {
+      const delta = readSessionEvents(file, { from: hit.frameEnd, carry: hit.carry });
+      for (const o of delta.events) applyEvent(hit.model, o);
+      cache.set(file, { mtimeMs, size, model: hit.model, carry: delta.carry, frameEnd: delta.frameEnd });
+      return hit.model;
+    } catch {
+      /* 回退到全量读取 */
+    }
+  }
+  const full = readSessionEvents(file);
+  const model = modelFromEvents(full.events);
   if (!model.id) model.id = path.basename(path.dirname(file));
-  cache.set(file, { mtimeMs, size, model });
+  cache.set(file, { mtimeMs, size, model, carry: full.carry, frameEnd: full.frameEnd });
   return model;
 }
 
@@ -482,7 +552,7 @@ function buildState(now) {
       completion = {
         id: `${m.id}:${last.turn}:${last.endedAt}`,
         at: last.endedAt,
-        title: m.title || '当前任务',
+        title: shortText(m.title || '当前任务', 100),
         reason: last.reason,
         durationMs: last.durationMs,
         sessionId: m.id,
@@ -543,7 +613,11 @@ let writeFailures = 0;
 function writeState(state) {
   const text = JSON.stringify(state);
   if (text === lastSerialized) return;
-  const tmp = `${STATE_PATH}.tmp`;
+  if (Buffer.byteLength(text, 'utf8') > 512 * 1024) {
+    log('state.json 超过 512KB，跳过本次写入');
+    return;
+  }
+  const tmp = `${STATE_PATH}.tmp.${process.pid}`;
   try {
     fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
     fs.writeFileSync(tmp, text, 'utf8');

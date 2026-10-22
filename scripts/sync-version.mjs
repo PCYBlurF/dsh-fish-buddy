@@ -30,4 +30,4 @@ const mac = JSON.parse(fs.readFileSync(macPath, 'utf8'));
 mac.version = version;
 fs.writeFileSync(macPath, JSON.stringify(mac, null, 2) + '\n', 'utf8');
 
-console.log(`synced version ${version}`);
+console.log(`synced version ${version} (CHANGELOG.md / docs/releases 需手动更新)`);

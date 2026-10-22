@@ -1,4 +1,4 @@
-# 发布流程
+﻿# 发布流程
 
 ## 原则
 
@@ -14,7 +14,8 @@
 - 修改版本时：
   1. 改 `version.json`
   2. 运行 `node scripts/sync-version.mjs`，自动写回 `bin/fish-widget.ps1` 和 `mac/package.json`
-  3. 运行 `node scripts/check-version.mjs`，确认三处和 `CHANGELOG.md` 一致
+  3. 运行 `node scripts/check-version.mjs`，确认 `version.json` / `bin/fish-widget.ps1` / `mac/package.json` 三处一致，且 `CHANGELOG.md` 有精确的 `## x.y.z` 标题
+  4. 手动更新 `CHANGELOG.md` 和 `docs/releases/vx.y.z.md`（sync 只写代码版本，不改文档）
 - 版本号必须与 release tag 一致。
 - CI 会跑 `check-version`，不一致直接失败。
 
@@ -43,14 +44,14 @@ git push origin main
 git push origin v0.1.x
 
 # 4. 打包（统一放到归档目录，不要散落在 G:/Workspace 根目录）
-RELEASE_DIR="G:/Workspace/杂物/dsh-fish-buddy-releases"
+RELEASE_DIR="$PWD/release-archives"
 mkdir -p "$RELEASE_DIR"
 git archive --format=zip --output="$RELEASE_DIR/dsh-fish-buddy-v0.1.x.zip" v0.1.x
 
 # 5. 创建 release（先获得许可）
 gh release create v0.1.x "$RELEASE_DIR/dsh-fish-buddy-v0.1.x.zip" \
   --title "DSH 大肥鱼 v0.1.x" \
-  --notes-file release-notes-v0.1.x.md \
+  --notes-file docs/releases/v0.1.x.md \
   --latest
 ```
 

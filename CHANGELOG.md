@@ -1,10 +1,41 @@
 # Changelog
 
-> v0.1.0–v0.1.15 全部保留；**v0.1.15 是当前版本**，原计划的 0.2.0 合并版已取消。完整 commit 历史仍在 git 中。
+> v0.1.0–v0.1.16 全部保留；**v0.1.16 是当前版本**，原计划的 0.2.0 合并版已取消。完整 commit 历史仍在 git 中。
 >
 > macOS 版标记为**实验性，暂停研发**。
 >
 > 说明：v0.1.0–v0.1.5 的原始 release 说明在备份时出现编码损坏，以下为按 commit / 功能 / 重建记录整理的摘要；v0.1.6–v0.1.11 为原始说明。
+
+## 0.1.16 — 2026-10-22
+
+### 性能
+
+- 移除气泡/地面/鱼形态的 Blur/DropShadow，改为静态渐变；常驻 Storyboard 限制 30fps，待命/隐藏时真正停止；idle 帧率降低
+- 核显占用：工作态约 36% → 4.5%，待命约 2.5%；修复精灵 0×0 布局导致的人偶不显示
+- 长会话读取头部 256KB + 尾部 8MB，标题/元数据不再丢失
+
+### Windows
+
+- #30 角色/气泡矩形点击穿透（WM_NCHITTEST），空白区不再拦截桌面
+- #31 核心稳定 60 秒后重置重启预算
+- #32 工作区改用 WPF DIP，多屏按窗口 DPI 换算
+- #39 长会话头部+尾部读取
+- #45/#81 stop 只处理本安装，Start-Core 不再全局杀 fish-core
+- #51 zstd 坏帧记录偏移后跳过
+- #52 fish-core 配置类型/范围校验与回退 warning
+- #54 会话日志增量读取（frameEnd + applyEvent）
+- #55 Global 单实例锁；state.json.tmp 按 PID 隔离
+- #57 单帧/总解压上限 32MB；state 字段截断与 512KB 上限
+- #75 ShowActivated=False + LiveSetting 无障碍标注
+- #82 start/stop/install/uninstall.cmd 传递退出码
+- #83 doctor 所有 FAIL 计入结果和退出码
+- #84 doctor 增加 Windows 安装链检查
+- #85 check-version 精确标题；RELEASING 路径与 notes 修正
+- #86 CI 解析 PowerShell/XAML、移除 macOS job、permissions/timeout/concurrency
+
+### macOS
+
+- 暂停；无应用代码改动；`mac/package.json` 只跟随版本号到 0.1.16
 
 ## 0.1.15 — 2026-10-22
 
@@ -61,7 +92,7 @@
 - README 增加 Windows/macOS 状态停留时长矩阵
 - 发布流程、issue 模板、标签脚本已准备（未上传）
 
-## 当前功能总览（0.1.15）
+## 当前功能总览（0.1.16）
 
 ### Windows（稳定维护）
 
@@ -278,8 +309,8 @@
 
 ## 版本说明
 
-- v0.1.15 是当前版本，也是推荐下载
-- v0.1.0–v0.1.14 历史 release/tag 保留
+- v0.1.16 是当前版本，也是推荐下载
+- v0.1.0–v0.1.15 历史 release/tag 保留
 - 原 0.2.0 合并版已取消
 - 旧版本 commit 仍在 git 历史中，可按 tag/commit 检出
 - 旧版本 release 说明已尽量恢复；0.1.0–0.1.5 的原始说明在备份时出现编码损坏，当前为重建摘要

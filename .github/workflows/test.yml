@@ -4,13 +4,21 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         node: [22]
     steps:
       - uses: actions/checkout@v5
@@ -31,3 +39,25 @@ jobs:
           node --check bin/fish-core.mjs
           node --check bin/doctor.mjs
           node --check plugin/index.mjs
+
+  windows-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Parse PowerShell
+        shell: pwsh
+        run: |
+          $files = @('bin/fish-widget.ps1', 'bin/stop-fish.ps1', 'install.ps1', 'uninstall.ps1')
+          foreach ($file in $files) {
+            $null = [ScriptBlock]::Create((Get-Content -LiteralPath $file -Raw))
+            Write-Host "ok $file"
+          }
+      - name: Parse XAML
+        shell: pwsh
+        run: |
+          $files = @('bin/chibi-ui.xaml', 'bin/fish-ui.xaml', 'bin/whale-ui.xaml')
+          foreach ($file in $files) {
+            try { [xml](Get-Content -LiteralPath $file -Raw) | Out-Null } catch { throw "XAML parse failed: $file" }
+            Write-Host "ok $file"
+          }

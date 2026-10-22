@@ -26,8 +26,8 @@ const results = [];
 let failed = 0;
 
 function add(name, ok, detail, critical = false) {
-  results.push({ name, ok, detail });
-  if (critical && !ok) failed += 1;
+  results.push({ name, ok, detail, critical });
+  if (!ok) failed += 1;
 }
 
 function versionAtLeast(version, major, minor) {
@@ -146,6 +146,20 @@ if (!fs.existsSync(configFile)) {
   }
 }
 
+if (process.platform === 'win32') {
+  add('挂件脚本', fs.existsSync(path.join(ROOT, 'bin', 'fish-widget.ps1')), 'bin/fish-widget.ps1');
+  add('启动器', fs.existsSync(path.join(ROOT, 'bin', 'fish-widget.vbs')), 'bin/fish-widget.vbs');
+  add('插件文件', fs.existsSync(path.join(ROOT, 'plugin', 'index.mjs')), 'plugin/index.mjs');
+  add('鲸鱼素材', fs.existsSync(path.join(ROOT, 'assets', 'whale', 'idle_0.png')), 'assets/whale');
+  const patch = path.join(DSH_HOME, 'profiles', 'desktop', 'cordis.patch.yml');
+  let installed = false;
+  try {
+    const text = fs.readFileSync(patch, 'utf8');
+    installed = text.includes('# >>> dsh-fish-buddy >>>') && text.includes('widgetDir:');
+  } catch { /* ignore */ }
+  add('Desktop 插件配置', installed, patch);
+}
+
 if (process.platform === 'darwin') {
   const electron = path.join(ROOT, 'mac', 'node_modules', 'electron');
   add('Electron 依赖', fs.existsSync(electron), electron);
@@ -164,7 +178,7 @@ const lines = [
 for (const item of results) {
   lines.push(`${item.ok ? 'OK  ' : 'FAIL'}  ${item.name}: ${item.detail}`);
 }
-lines.push('', failed === 0 ? '结果: OK' : `结果: ${failed} 个关键项失败`);
+lines.push('', failed === 0 ? '结果: OK' : `结果: ${failed} 个失败`);
 lines.push('诊断包隐私：state.json 仅保留 phase / 会话 id / running / turn / step / 进度计数，不含 title、cwd、todos、errorMessage、goal。');
 console.log(lines.join('\n'));
 
@@ -266,3 +280,5 @@ if (args.has('--report') || args.has('--bundle')) {
 }
 
 process.exit(failed === 0 ? 0 : 1);
+
+process.exitCode = failed === 0 ? 0 : 1;
