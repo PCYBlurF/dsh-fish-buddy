@@ -15,6 +15,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { CONFIG_KEYS, CONFIG_RANGES } from './config-schema.mjs';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -137,7 +138,7 @@ if (!fs.existsSync(configFile)) {
   try {
     const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
     add('配置文件', true, configFile);
-    const known = new Set(['mascot', 'scale', 'pollMs', 'completionWindowMinutes', 'activeWindowMinutes', 'includeSubagents', 'maxSessionAgeHours', 'tailBytes', 'logMaxBytes', 'dshUrl', 'notify', 'sound', 'tray', 'compact']);
+    const known = new Set(CONFIG_KEYS);
     const unknown = Object.keys(config).filter((key) => !known.has(key));
     add('配置键', unknown.length === 0, unknown.length ? `未知键: ${unknown.join(', ')}` : '无未知键');
     if (config.scale !== undefined) {
@@ -145,8 +146,7 @@ if (!fs.existsSync(configFile)) {
       add('config.scale', Number.isFinite(scale) && scale >= 0.7 && scale <= 1.4, String(config.scale));
     }
     if (config.dshUrl) add('config.dshUrl', isAllowedDshUrl(config.dshUrl), String(config.dshUrl));
-    const ranges = { pollMs: [200, 600000], completionWindowMinutes: [1, 1440], activeWindowMinutes: [1, 20160], maxSessionAgeHours: [1, 168], tailBytes: [65536, 67108864], logMaxBytes: [65536, 67108864] };
-    for (const [key, [min, max]] of Object.entries(ranges)) {
+    for (const [key, [min, max]] of Object.entries(CONFIG_RANGES)) {
       if (config[key] === undefined) continue;
       const n = Number(config[key]);
       add(`config.${key}`, Number.isFinite(n) && n >= min && n <= max, `${config[key]} (${min}..${max})`);

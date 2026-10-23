@@ -8,14 +8,14 @@
  *   widgetDir  挂件目录，默认 ~/.dsh/fish-buddy
  *   enabled    设为 false 可临时禁用自动启动
  */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const name = 'dsh-fish-buddy';
 
-let launched = false;
+let watchdog = null;
 
 function logWarn(ctx, message) {
   try {
@@ -41,15 +41,27 @@ function widgetPid(widgetDir) {
   }
 }
 
+function widgetProcessCount() {
+  if (process.platform !== 'win32') return 0;
+  try {
+    const out = execFileSync('powershell.exe', ['-NoProfile', '-Command', "(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -match 'fish-widget\.ps1' } | Measure-Object).Count"], { encoding: 'utf8', timeout: 8000 });
+    return Number(String(out).trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 function isWidgetRunning(widgetDir) {
   const pid = widgetPid(widgetDir);
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+  if (pid) {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      /* fall through to a real process check */
+    }
   }
+  return widgetProcessCount() > 0;
 }
 
 function launchWindows(ctx, widgetDir) {
@@ -80,13 +92,17 @@ function launchWindows(ctx, widgetDir) {
 export function apply(ctx, config = {}) {
   // 配置热重载会重复 apply；只允许一次初始化 + 一个看门狗定时器。
   // 注意：disabled / 依赖缺失 / 启动失败时不要提前置位，否则热重载无法重试。
-  if (launched) return;
+  if (config && config.enabled === false) {
+    if (watchdog) {
+      clearInterval(watchdog);
+      watchdog = null;
+    }
+    logInfo(ctx, 'DSH 大肥鱼自动启动已禁用');
+    return;
+  }
+  if (watchdog) return;
 
   try {
-    if (config && config.enabled === false) {
-      logInfo(ctx, 'DSH 大肥鱼自动启动已禁用');
-      return;
-    }
 
     const home = process.env.DSH_HOME || join(homedir(), '.dsh');
     const widgetDir = (config && config.widgetDir) || join(home, 'fish-buddy');
@@ -108,7 +124,6 @@ export function apply(ctx, config = {}) {
       });
       child.unref();
       logInfo(ctx, 'DSH 大肥鱼（macOS）已在桌面待命');
-      launched = true;
       return;
     }
 
@@ -125,7 +140,6 @@ export function apply(ctx, config = {}) {
     }
 
     launchWindows(ctx, widgetDir);
-    launched = true;
 
     const ensure = () => {
       try {
@@ -137,15 +151,15 @@ export function apply(ctx, config = {}) {
     };
 
     try {
-      if (typeof ctx.effect === 'function') {
-        ctx.effect(() => {
-          const timer = setInterval(ensure, 15000);
-          return () => clearInterval(timer);
-        });
-      } else if (typeof ctx.on === 'function') {
-        const timer = setInterval(ensure, 15000);
-        ctx.on('dispose', () => clearInterval(timer));
-      }
+      watchdog = setInterval(ensure, 15000);
+      const stop = () => {
+        if (watchdog) {
+          clearInterval(watchdog);
+          watchdog = null;
+        }
+      };
+      if (typeof ctx.effect === 'function') ctx.effect(stop);
+      else if (typeof ctx.on === 'function') ctx.on('dispose', stop);
     } catch {
       /* ignore */
     }

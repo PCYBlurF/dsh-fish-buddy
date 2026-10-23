@@ -12,6 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { CONFIG_DEFAULTS, validateConfigValue } from './config-schema.mjs';
 
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(BIN_DIR, '..');
@@ -19,15 +20,7 @@ const ZSTD_MAGIC = 0xfd2fb528;
 const MAX_DECOMPRESSED = 256 * 1024 * 1024;
 const ZSTD_MAGIC_BUFFER = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 
-const DEFAULTS = {
-  pollMs: 600,
-  maxSessionAgeHours: 12,
-  tailBytes: 8 * 1024 * 1024,
-  dshUrl: '',
-  completionWindowMinutes: 10,
-  activeWindowMinutes: 20,
-  logMaxBytes: 512 * 1024,
-};
+const DEFAULTS = CONFIG_DEFAULTS;
 
 function parseArgs(argv) {
   const out = {};
@@ -72,23 +65,20 @@ function loadConfig() {
     /* 首次运行没有配置 */
   }
   const source = user && typeof user === 'object' ? user : {};
-  const numberOption = (key, min, max, integer = false) => {
+  const numberOption = (key) => {
     const raw = source[key];
     if (raw === undefined) return DEFAULTS[key];
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < min || n > max) {
-      CONFIG_WARNINGS.push(`config.${key}=${JSON.stringify(raw)} 非法，回退 ${DEFAULTS[key]}`);
-      return DEFAULTS[key];
-    }
-    return integer ? Math.round(n) : n;
+    const check = validateConfigValue(key, raw);
+    if (!check.ok) CONFIG_WARNINGS.push(`config.${key}=${JSON.stringify(raw)} 非法，回退 ${DEFAULTS[key]}`);
+    return check.value;
   };
   const cfg = {
-    pollMs: numberOption('pollMs', 200, 600000, true),
-    maxSessionAgeHours: numberOption('maxSessionAgeHours', 1, 168),
-    tailBytes: numberOption('tailBytes', 64 * 1024, 64 * 1024 * 1024, true),
-    completionWindowMinutes: numberOption('completionWindowMinutes', 1, 1440),
-    activeWindowMinutes: numberOption('activeWindowMinutes', 1, 1440),
-    logMaxBytes: numberOption('logMaxBytes', 64 * 1024, 16 * 1024 * 1024, true),
+    pollMs: numberOption('pollMs'),
+    maxSessionAgeHours: numberOption('maxSessionAgeHours'),
+    tailBytes: numberOption('tailBytes'),
+    completionWindowMinutes: numberOption('completionWindowMinutes'),
+    activeWindowMinutes: numberOption('activeWindowMinutes'),
+    logMaxBytes: numberOption('logMaxBytes'),
     dshUrl: DEFAULTS.dshUrl,
   };
   if (source.dshUrl !== undefined && typeof source.dshUrl !== 'string') {
@@ -478,7 +468,10 @@ const cache = new Map();
 const MAX_SESSION_FILES = 200;
 const MAX_SESSION_FILES_PER_WORKSPACE = 50;
 
+let sessionFilesCache = { at: 0, files: [] };
+
 function listSessionFiles() {
+  if (sessionFilesCache.at && Date.now() - sessionFilesCache.at < 5000) return sessionFilesCache.files;
   const files = [];
   let workspaces;
   try {
@@ -520,7 +513,9 @@ function listSessionFiles() {
     selected.push(...list.slice(0, MAX_SESSION_FILES_PER_WORKSPACE));
   }
   selected.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return selected.slice(0, MAX_SESSION_FILES);
+  const result = selected.slice(0, MAX_SESSION_FILES);
+  sessionFilesCache = { at: Date.now(), files: result };
+  return result;
 }
 
 function loadModel(file, mtimeMs, size) {
@@ -689,6 +684,7 @@ function tick() {
   }
 }
 
+if (process.env.DSH_FISH_TEST !== '1') {
 try {
   fs.writeFileSync(path.join(APP_DIR, 'core.pid'), String(process.pid));
 } catch {
@@ -719,3 +715,6 @@ process.on('SIGINT', () => {
   clearInterval(timer);
   process.exit(0);
 });
+}
+
+export { modelFromEvents, applyEvent, activityLabel, shortText };
