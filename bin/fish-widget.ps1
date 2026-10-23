@@ -24,7 +24,7 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-$script:Version = '0.1.21'
+$script:Version = '0.1.22'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
 . (Join-Path $script:BinDir 'widget-balance.ps1')
 . (Join-Path $script:BinDir 'widget-update.ps1')
@@ -1991,29 +1991,6 @@ function Read-State {
   return $null
 }
 
-$script:StateLock = New-Object object
-$script:PendingState = $null
-$script:StateReader = New-Object System.Threading.Timer([System.Threading.TimerCallback]{
-  param($timerState)
-  try {
-    $st = $null
-    try {
-      [System.Threading.Monitor]::Enter($script:StateLock)
-      $st = $script:PendingState
-      $script:PendingState = $null
-      [System.Threading.Monitor]::Exit($script:StateLock)
-    } catch {
-      try { [System.Threading.Monitor]::Exit($script:StateLock) } catch { }
-    }
-    if ($null -ne $st) {
-      [System.Threading.Monitor]::Enter($script:StateLock)
-      $script:PendingState = $st
-      [System.Threading.Monitor]::Exit($script:StateLock)
-    }
-  } catch {
-    try { [System.Threading.Monitor]::Exit($script:StateLock) } catch { }
-  }
-}, $null, 0, 300)
 
 function Get-PreviewState([string]$phase) {
   $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
