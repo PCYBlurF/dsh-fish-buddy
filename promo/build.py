@@ -189,7 +189,7 @@ def encode_video(renderer: Renderer, out_path: str, preview=False):
             FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
             "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{out_w}x{out_h}", "-r", str(fps), "-i", "-",
             "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path,
+            "-pix_fmt", "yuv420p", out_path,
         ]
     else:
         out_w, out_h, fps = W, H, FPS
@@ -202,7 +202,7 @@ def encode_video(renderer: Renderer, out_path: str, preview=False):
             "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",
             "-x264-params", "aq-mode=3:aq-strength=1.0",
             "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-            "-g", "120", "-movflags", "+faststart", out_path,
+            "-g", "120", out_path,
         ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     t0 = time.time()
@@ -223,6 +223,7 @@ def encode_video(renderer: Renderer, out_path: str, preview=False):
     if rc != 0:
         raise SystemExit(f"ffmpeg failed with code {rc}")
     print(f"video written: {out_path}  ({time.time()-t0:.1f}s)")
+    validate_mp4(out_path)
 
 
 def render_stills(renderer: Renderer, times, ss=2):
@@ -233,6 +234,38 @@ def render_stills(renderer: Renderer, times, ss=2):
         path = os.path.join(PREVIEW_DIR, name)
         frame.save(path)
         print(f"still t={t:5.2f} -> {path} ({time.time()-t0:.2f}s)")
+
+
+def validate_mp4(path, expect_seconds=None):
+    import struct
+
+    size = os.path.getsize(path)
+    boxes = []
+    with open(path, "rb") as f:
+        pos = 0
+        while pos < size - 8:
+            f.seek(pos)
+            hdr = f.read(8)
+            if len(hdr) < 8:
+                break
+            sz, typ = struct.unpack(">I4s", hdr)
+            if sz == 1:
+                sz = struct.unpack(">Q", f.read(8))[0]
+            if sz < 8:
+                raise SystemExit(f"corrupt mp4 {path}: bad box at {pos}")
+            boxes.append(typ.decode("latin1"))
+            pos += sz
+    if boxes.count("moov") != 1:
+        raise SystemExit(f"corrupt mp4 {path}: moov count {boxes.count('moov')} ({boxes})")
+    r = subprocess.run(
+        [FFMPEG, "-v", "error", "-i", path, "-t", "3", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+    )
+    err = (r.stderr or "").strip()
+    if r.returncode != 0 or "Invalid NAL" in err or "missing picture" in err:
+        raise SystemExit("corrupt video stream in " + path + ":" + chr(10) + err[:800])
+    print(f"validated: {path}  boxes={boxes}")
 
 
 def mux_audio(video_in, audio_in, out_path):
@@ -247,6 +280,7 @@ def mux_audio(video_in, audio_in, out_path):
     if r.returncode != 0:
         raise SystemExit(r.stderr)
     print("muxed:", out_path)
+    validate_mp4(out_path)
 
 
 def main():

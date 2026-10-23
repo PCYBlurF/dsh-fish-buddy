@@ -194,9 +194,9 @@ def scene_intro(cv: Canvas, t, lt):
     # small line — the cute nickname
     p = appear(lt, 0.85, 0.6)
     if p > 0:
-        icon = fish_icon(24 * cv.ss)
-        cv.img.alpha_composite(_with_alpha(icon, p), (int(150 * cv.ss), int(456 * cv.ss)))
-        cv.text((184, 456), "可爱大肥鱼桌面挂件", 25, _a(C["ink3"], p), "r", alpha=p)
+        icon = fish_icon(28 * cv.ss)
+        cv.img.alpha_composite(_with_alpha(icon, p), (int(150 * cv.ss), int(453 * cv.ss)))
+        cv.text((188, 456), "可爱大肥鱼桌面挂件", 25, _a(C["ink3"], p), "r", alpha=p)
 
     # accent rule
     p = appear(lt, 1.05, 0.5)
@@ -829,11 +829,11 @@ def scene_outro(cv: Canvas, t, lt):
     chip_row_centered(cv, 210, ["实时进度", "完成提醒", "多会话", "可调大小", "MIT 开源"], p, size=19)
 
     ma = smoothstep(inv_lerp(0.10, 0.70, lt))
-    gl = glow_layer(240, (255, 216, 107), int(22 * ma), 2.2)
-    cv.img.alpha_composite(gl, (int(960 * cv.ss - gl.width / 2), int(690 * cv.ss - gl.height / 2)))
-    ground_shadow(cv, 960, 656, 300, alpha=0.55 * ma)
+    gl = glow_layer(300, (255, 216, 107), int(30 * ma), 2.1)
+    cv.img.alpha_composite(gl, (int(960 * cv.ss - gl.width / 2), int(668 * cv.ss - gl.height / 2)))
+    ground_shadow(cv, 960, 660, 330, alpha=0.62 * ma)
     draw_mascot(cv, "celebrate", t + 1.2, 960, 650, 390, ma, breathe=0.012,
-                glow_color=(255, 216, 107, 110))
+                glow_color=(255, 216, 107, 110), fade_bottom=0.10)
 
     for i in range(12):
         r = seeded(i, 41)
@@ -860,7 +860,7 @@ def scene_outro(cv: Canvas, t, lt):
 
     p = appear(lt, 0.80, 0.6)
     if p > 0:
-        cv.text((W / 2, 982), "MIT License  ·  Windows 10/11  ·  macOS 实验性  ·  非官方同人项目",
+        cv.text((W / 2, 982), "DSH 桌面进度插件  ·  MIT License  ·  Windows 10/11  ·  macOS 实验性  ·  非官方同人项目",
                 16, _a(C["muted"], p), "r", anchor="mm")
 
 

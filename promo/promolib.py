@@ -13,7 +13,7 @@ import random
 from functools import lru_cache
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 # --------------------------------------------------------------------------
 # Paths / palette
@@ -491,10 +491,12 @@ def bubble_body(w_px, h_px, r_px, style="default", ok=False):
 def _bubble_body(w_px, h_px, r_px, style, ok):
     if style == "white":
         stops = ((0, (250, 252, 255, 255)), (1, (238, 243, 251, 255)))
-        border = (255, 255, 255, 210)
+        border = (150, 166, 196, 190)
+        gloss_alpha = 34
     elif style == "glass":
-        stops = ((0, (255, 255, 255, 34)), (0.45, (255, 255, 255, 16)), (1, (255, 255, 255, 26)))
-        border = (255, 255, 255, 120)
+        stops = ((0, (255, 255, 255, 40)), (0.45, (255, 255, 255, 20)), (1, (255, 255, 255, 30)))
+        border = (255, 255, 255, 130)
+        gloss_alpha = 54
     else:
         stops = (
             (0, (22, 33, 61, 250)),
@@ -502,32 +504,29 @@ def _bubble_body(w_px, h_px, r_px, style, ok):
             (1, (12, 20, 43, 242)),
         )
         border = (255, 255, 255, 48)
+        gloss_alpha = 20
 
-    body = vertical_gradient(w_px, h_px, stops).copy()
+    mask = Image.new("L", (w_px, h_px), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w_px - 1, h_px - 1], radius=r_px, fill=255)
 
-    # top gloss
-    gloss = Image.new("RGBA", (w_px, h_px), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(gloss)
-    gd.rounded_rectangle(
-        [0, 0, w_px - 1, h_px - 1],
-        radius=r_px,
-        fill=None,
-        outline=(255, 255, 255, 0),
-    )
-    grad = vertical_gradient(
+    # body clipped to the rounded shape
+    base = vertical_gradient(w_px, h_px, stops)
+    body = Image.new("RGBA", (w_px, h_px), (0, 0, 0, 0))
+    body.paste(base, (0, 0), mask)
+
+    # soft top gloss, also clipped
+    gloss = vertical_gradient(
         w_px,
         h_px,
         (
-            (0.0, (255, 255, 255, 20 if style == "default" else 34)),
-            (0.35, (255, 255, 255, 0)),
+            (0.0, (255, 255, 255, gloss_alpha)),
+            (0.38, (255, 255, 255, 0)),
             (1.0, (255, 255, 255, 0)),
         ),
     )
-    mask = Image.new("L", (w_px, h_px), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w_px - 1, h_px - 1], radius=r_px, fill=255)
-    body = Image.composite(grad, body, mask)
+    gloss.putalpha(ImageChops.multiply(gloss.getchannel("A"), mask))
+    body = Image.alpha_composite(body, gloss)
 
-    # border
     bd = ImageDraw.Draw(body)
     bw = max(1, int(round(w_px / 348 * 1.2)))
     bd.rounded_rectangle(
@@ -537,7 +536,6 @@ def _bubble_body(w_px, h_px, r_px, style, ok):
         width=bw,
     )
 
-    # completion tint ring
     if ok:
         ring = Image.new("RGBA", (w_px, h_px), (0, 0, 0, 0))
         rd = ImageDraw.Draw(ring)
@@ -589,7 +587,7 @@ def wallpaper_art(w_px, h_px, r_px):
     img = vertical_gradient(
         w_px,
         h_px,
-        ((0.0, (33, 45, 88, 255)), (0.5, (56, 72, 124, 255)), (1.0, (86, 106, 158, 255))),
+        ((0.0, (24, 33, 64, 255)), (0.5, (40, 53, 92, 255)), (1.0, (62, 78, 118, 255))),
     )
     ov = Image.new("RGBA", (w_px, h_px), (0, 0, 0, 0))
     blobs = [

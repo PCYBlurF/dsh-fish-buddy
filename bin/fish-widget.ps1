@@ -2140,7 +2140,20 @@ $script:Window.Add_LocationChanged({
   # 拖动结束保存位置；用节流避免频繁写盘
   if ($null -eq $script:Drag) { Save-WindowPos }
 })
+try {
+  $script:Window.Dispatcher.Add_UnhandledException({
+    param($sender, $e)
+    Write-DebugLog ('dispatcher unhandled: ' + $e.Exception.ToString())
+    $e.Handled = $true
+  })
+  [System.AppDomain]::CurrentDomain.add_UnhandledException({
+    param($sender, $e)
+    Write-DebugLog ('appdomain unhandled: ' + $e.ExceptionObject.ToString())
+  })
+} catch { Write-DebugLog ('exception hook failed: ' + $_.Exception.Message) }
+
 $script:Window.Add_Closed({
+  Write-DebugLog 'window closed'
   Unregister-Hotkey
   try { Remove-Item -LiteralPath $script:PidPath -Force -ErrorAction SilentlyContinue } catch { }
   Stop-Core
