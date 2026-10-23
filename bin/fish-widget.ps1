@@ -24,6 +24,7 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
+$script:Version = '0.1.19'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
 
 function Find-Name([string]$name) { return $script:Window.FindName($name) }
