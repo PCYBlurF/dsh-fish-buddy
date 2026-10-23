@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(BIN_DIR, '..');
 const ZSTD_MAGIC = 0xfd2fb528;
-const MAX_DECOMPRESSED = 32 * 1024 * 1024;
+const MAX_DECOMPRESSED = 256 * 1024 * 1024;
 const ZSTD_MAGIC_BUFFER = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 
 const DEFAULTS = {
@@ -645,11 +645,14 @@ function buildState(now) {
 // ── 主循环 ──────────────────────────────────────────────────────────────
 let lastSerialized = '';
 let writeFailures = 0;
+let lastWriteAt = 0;
 
 function writeState(state) {
   const text = JSON.stringify(state);
   const signature = JSON.stringify({ ...state, now: 0 });
-  if (signature === lastSerialized) return;
+  const nowMs = Date.now();
+  // 状态没变时最多每 15 秒写一次心跳，避免 widget 把空闲误判为 stale。
+  if (signature === lastSerialized && nowMs - lastWriteAt < 15000) return;
   if (Buffer.byteLength(text, 'utf8') > 512 * 1024) {
     log('state.json 超过 512KB，跳过本次写入');
     return;
@@ -669,6 +672,7 @@ function writeState(state) {
       }
     }
     lastSerialized = signature;
+    lastWriteAt = nowMs;
     writeFailures = 0;
   } catch (error) {
     writeFailures += 1;

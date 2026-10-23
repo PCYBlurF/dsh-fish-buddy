@@ -125,7 +125,7 @@ $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
-$script:Version = '0.1.17'
+$script:Version = '0.1.18'
 $script:Material = 'default'
 try {
   $m = [string]$script:Ui.material
@@ -146,15 +146,15 @@ $script:HitSource = $null
 $script:HitHook = $null
 $script:LastReconnectAt = [DateTime]::Now
 $script:CoreStartedAt = [DateTime]::MinValue
-$script:StaleSeconds = 12.0
-$script:CoreWarmupSeconds = 20.0
+$script:StaleSeconds = 30.0
+$script:CoreWarmupSeconds = 120.0
 try {
   $pollMs = [double]$script:Config.pollMs
   if ($pollMs -ge 200 -and $pollMs -le 600000) {
-    $script:StaleSeconds = [Math]::Max(12.0, [Math]::Ceiling($pollMs * 3.0 / 1000.0) + 5.0)
+    $script:StaleSeconds = [Math]::Max(30.0, [Math]::Ceiling($pollMs * 3.0 / 1000.0) + 5.0)
   }
 } catch { }
-$script:CoreWarmupSeconds = [Math]::Max(20.0, $script:StaleSeconds)
+$script:CoreWarmupSeconds = [Math]::Max(120.0, $script:StaleSeconds)
 
 $script:Mascot = 'chibi'
 try { if ($script:Config.mascot) { $script:Mascot = [string]$script:Config.mascot } } catch { }
@@ -541,6 +541,7 @@ function Save-WindowPos {
 # ── 界面状态 ─────────────────────────────────────────────────────────────
 $script:LastSignature = ''
 $script:LastCompletionId = $null
+$script:SeenCompletionIds = @{}
 $script:FirstStateSeen = $false
 $script:IdleSince = $null
 $script:AutoHidden = $false
@@ -2259,11 +2260,13 @@ function Apply-State($st) {
     $single = Get-Prop $st 'completion'
     if ($null -ne $single) { $completions = @($single) }
   }
+  $newSeen = @{}
   foreach ($completion in $completions) {
     $cid = [string](Get-Prop $completion 'id')
-    if (-not $cid -or $cid -eq $script:LastCompletionId) { continue }
+    if (-not $cid) { continue }
+    $newSeen[$cid] = 1
+    if ($script:SeenCompletionIds.ContainsKey($cid)) { continue }
     $isFirst = -not $script:FirstStateSeen
-    $script:LastCompletionId = $cid
     if (-not $isFirst -and [string](Get-Prop $completion 'reason') -eq 'completed') {
       $title = [string](Get-Prop $completion 'title')
       $dur = [double](Get-Prop $completion 'durationMs')
@@ -2273,6 +2276,7 @@ function Apply-State($st) {
       Notify-Completion 'DSH 大肥鱼 · 任务完成' ("$title · 用时 $(Format-Duration $dur)")
     }
   }
+  $script:SeenCompletionIds = $newSeen
   $script:FirstStateSeen = $true
 
   $script:LastRenderAt = [DateTime]::Now
