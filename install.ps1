@@ -10,7 +10,8 @@
   The repository can live anywhere; the absolute path is written into the patch.
 #>
 param(
-  [switch]$NoStart
+  [switch]$NoStart,
+  [switch]$NoEnable
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +67,7 @@ $pluginUri = ([uri](Join-Path $repo 'plugin\index.mjs')).AbsoluteUri
 $widgetDir = $repo -replace '\\', '/'
 $pluginYaml = $pluginUri -replace "'", "''"
 $widgetYaml = $widgetDir -replace "'", "''"
+$enabledLine = if ($NoEnable) { "        enabled: false`n" } else { '' }
 $block = @"
 $begin
 - insert:
@@ -73,7 +75,7 @@ $begin
       name: '$pluginYaml'
       config:
         widgetDir: '$widgetYaml'
-$end
+$enabledLine$end
 "@
 
 $newText = $text.TrimEnd() + "`n`n" + $block + "`n"

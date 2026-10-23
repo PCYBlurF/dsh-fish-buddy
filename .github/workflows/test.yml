@@ -53,6 +53,17 @@ jobs:
             $null = [ScriptBlock]::Create((Get-Content -LiteralPath $file -Raw))
             Write-Host "ok $file"
           }
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          if ($results) { $results | Format-Table -AutoSize | Out-String | Write-Host; exit 1 }
+      - name: Pester
+        shell: pwsh
+        run: |
+          Install-Module Pester -Force -Scope CurrentUser -ErrorAction Stop
+          Invoke-Pester -Path test -CI
       - name: Parse XAML
         shell: pwsh
         run: |

@@ -1,10 +1,24 @@
 # Changelog
 
-> v0.1.0–v0.1.19 全部保留；**v0.1.19 是当前版本**，原计划的 0.2.0 合并版已取消。完整 commit 历史仍在 git 中。
+> v0.1.0–v0.1.20 全部保留；**v0.1.20 是当前版本**，原计划的 0.2.0 合并版已取消。完整 commit 历史仍在 git 中。
 >
 > macOS 版标记为**实验性，暂停研发**。
 >
 > 说明：v0.1.0–v0.1.5 的原始 release 说明在备份时出现编码损坏，以下为按 commit / 功能 / 重建记录整理的摘要；v0.1.6–v0.1.11 为原始说明。
+
+## 0.1.20 — 2026-10-23
+
+### 工具链
+
+- `install.ps1` 新增 `-NoEnable`：只写 profile，不启用插件
+- CI 增加 PSScriptAnalyzer（Error 级）和 Pester
+- 新增 `bin/widget-state.ps1` 与 `test/WidgetState.Tests.ps1`，覆盖 working/done/error/aborted/idle
+- 关键路径 catch 补日志（Read-State / Stop-Core / Read-JsonFile / Save-JsonFile）
+
+### 说明
+
+- widget 进一步拆分（balance/update 模块）在本地触发 lib 顶层初始化问题，已回退，保持 0.1.19 稳定结构
+- 9 个 DispatcherTimer 合并未做，留待单独验证
 
 ## 0.1.19 — 2026-10-23
 
@@ -129,7 +143,7 @@
 - README 增加 Windows/macOS 状态停留时长矩阵
 - 发布流程、issue 模板、标签脚本已准备（未上传）
 
-## 当前功能总览（0.1.19）
+## 当前功能总览（0.1.20）
 
 ### Windows（稳定维护）
 
@@ -346,8 +360,8 @@
 
 ## 版本说明
 
-- v0.1.19 是当前版本，也是推荐下载
-- v0.1.0–v0.1.18 历史 release/tag 保留
+- v0.1.20 是当前版本，也是推荐下载
+- v0.1.0–v0.1.19 历史 release/tag 保留
 - 原 0.2.0 合并版已取消
 - 旧版本 commit 仍在 git 历史中，可按 tag/commit 检出
 - 旧版本 release 说明已尽量恢复；0.1.0–0.1.5 的原始说明在备份时出现编码损坏，当前为重建摘要
