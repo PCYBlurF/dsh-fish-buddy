@@ -24,8 +24,10 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-$script:Version = '0.1.20'
+$script:Version = '0.1.21'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
+. (Join-Path $script:BinDir 'widget-balance.ps1')
+. (Join-Path $script:BinDir 'widget-update.ps1')
 
 function Find-Name([string]$name) { return $script:Window.FindName($name) }
 
@@ -895,10 +897,6 @@ $script:BalanceTitle = '模型余额'
 $script:BalanceModel = ''
 $script:BalanceKind = ''
 
-$script:BalancePoll = New-Object System.Windows.Threading.DispatcherTimer
-$script:BalancePoll.Interval = [TimeSpan]::FromMilliseconds(250)
-$script:BalancePoll.Add_Tick({ Update-BalanceJob })
-
 $script:BalanceRestore = New-Object System.Windows.Threading.DispatcherTimer
 $script:BalanceRestore.Interval = [TimeSpan]::FromSeconds(3)
 $script:BalanceRestore.Add_Tick({
@@ -906,200 +904,9 @@ $script:BalanceRestore.Add_Tick({
   $script:BalanceShowing = $false
 })
 
-function Get-ActiveModel {
-  $provider = ''
-  $model = ''
-  try {
-    if ($null -ne $script:CurrentState) {
-      $session = $script:CurrentState.session
-      if ($null -ne $session) {
-        $provider = [string]$session.provider
-        $model = [string]$session.llmModel
-      }
-    }
-  } catch { }
-  if (-not $provider) {
-    try {
-      $home = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
-      $profile = Join-Path $home 'profiles\desktop\cordis.patch.yml'
-      if (Test-Path -LiteralPath $profile) {
-        $txt = Get-Content -LiteralPath $profile -Raw
-        if ($txt -match '(?s)- id: agent-default-model.*?provider:\s*([^\s]+).*?model:\s*([^\s]+)') {
-          $provider = $Matches[1]
-          $model = $Matches[2]
-        }
-      }
-    } catch { }
-  }
-  if (-not $provider) { $provider = 'deepseek-official' }
-  if (-not $model) { $model = 'deepseek-flash' }
-  return [pscustomobject]@{ Provider = $provider; Model = $model }
-}
 
-function Set-BalanceBubble([string]$title, [string]$text, [string]$meta, [string]$dot) {
-  $script:BalanceShowing = $true
-  $script:TitleText.Text = $title
-  $script:TaskText.Text = $text
-  $script:MetaText.Text = $meta
-  $script:CountText.Text = ''
-  $script:BarTrack.Visibility = [Windows.Visibility]::Collapsed
-  Set-Compact $false
-  Set-DotColor $dot
-  Set-BubbleVisible $true
-  try {
-    $script:BalanceRestore.Stop()
-    $script:BalanceRestore.Start()
-  } catch { }
-}
 
-function Show-Balance {
-  if ($script:BalanceBusy) { return }
-  $active = Get-ActiveModel
-  $provider = [string]$active.Provider
-  $model = [string]$active.Model
-  $script:BalanceModel = $model
-  $script:BalanceKind = ''
-  $endpoint = ''
-  $credName = ''
-  $title = ''
-  switch -Regex ($provider) {
-    'deepseek' {
-      $endpoint = 'https://api.deepseek.com/user/balance'
-      $credName = 'DEEPSEEK_API_KEY'
-      $title = 'DeepSeek 余额'
-      $script:BalanceKind = 'deepseek'
-    }
-    'openrouter' {
-      $endpoint = 'https://openrouter.ai/api/v1/credits'
-      $credName = 'OPENROUTER_API_KEY'
-      $title = 'OpenRouter 余额'
-      $script:BalanceKind = 'openrouter'
-    }
-    'moonshot|kimi' {
-      $endpoint = 'https://api.moonshot.cn/v1/users/me/balance'
-      $title = 'Moonshot 余额'
-      $script:BalanceKind = 'moonshot'
-      if ($provider -match 'kimi') {
-        $credName = 'KIMI_API_KEY'
-        if (-not (Get-DshCredential $credName)) { $credName = 'MOONSHOT_API_KEY' }
-      } else {
-        $credName = 'MOONSHOT_API_KEY'
-      }
-    }
-    default {
-      Set-BalanceBubble ($provider + ' 余额') '该 provider 暂无余额接口' ('当前模型：' + $model) '#FFB454'
-      return
-    }
-  }
-  $script:BalanceTitle = $title
-  $key = Get-DshCredential $credName
-  if (-not $key) {
-    Set-BalanceBubble $title ('未找到 ' + $credName) ('当前模型：' + $model) '#FF6B6B'
-    return
-  }
-  $script:BalanceBusy = $true
-  Set-BalanceBubble $title '查询中…' ($model + ' · 正在连接') '#7C93FF'
-  try {
-    $script:BalanceStarted = [DateTime]::Now
-    $script:BalanceJob = Start-Job -ScriptBlock {
-      param($apiKey, $url)
-      try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $r = Invoke-RestMethod -Uri $url -Headers @{ Authorization = ('Bearer ' + $apiKey); Accept = 'application/json' } -TimeoutSec 12
-        return ($r | ConvertTo-Json -Depth 6 -Compress)
-      } catch {
-        return ('ERR:' + $_.Exception.Message)
-      }
-    } -ArgumentList $key, $endpoint
-    $script:BalancePoll.Start()
-  } catch {
-    $script:BalanceBusy = $false
-    Set-BalanceBubble $title ('查询失败：' + $_.Exception.Message) '双击重试' '#FF6B6B'
-  }
-}
 
-function Update-BalanceJob {
-  if ($null -eq $script:BalanceJob) {
-    try { $script:BalancePoll.Stop() } catch { }
-    return
-  }
-  $title = $script:BalanceTitle
-  $model = $script:BalanceModel
-  $state = [string]$script:BalanceJob.State
-  if ($state -eq 'Running' -or $state -eq 'NotStarted') {
-    if (([DateTime]::Now - $script:BalanceStarted).TotalSeconds -gt 20) {
-      try { Stop-Job -Job $script:BalanceJob -ErrorAction SilentlyContinue } catch { }
-      try { Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } catch { }
-      $script:BalanceJob = $null
-      $script:BalanceBusy = $false
-      try { $script:BalancePoll.Stop() } catch { }
-      Set-BalanceBubble $title '查询超时' '双击重试' '#FF6B6B'
-    }
-    return
-  }
-  $out = ''
-  try {
-    $out = (@(Receive-Job -Job $script:BalanceJob -ErrorAction Stop) | Where-Object { $_ -is [string] } | Select-Object -Last 1)
-  } catch {
-    $out = 'ERR:' + $_.Exception.Message
-  }
-  try { Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } catch { }
-  $script:BalanceJob = $null
-  $script:BalanceBusy = $false
-  try { $script:BalancePoll.Stop() } catch { }
-  if (-not $out) { $out = 'ERR:空响应' }
-  if ($out -like 'ERR:*') {
-    $msg = $out.Substring(4).Trim()
-    if ($msg.Length -gt 60) { $msg = $msg.Substring(0, 60) + '…' }
-    Set-BalanceBubble $title ('查询失败：' + $msg) '双击重试' '#FF6B6B'
-    return
-  }
-  try {
-    $data = $out | ConvertFrom-Json
-    $text = ''
-    $meta = ''
-    $ok = $true
-    switch ($script:BalanceKind) {
-      'deepseek' {
-        if ($null -eq $data.is_available -or $null -eq $data.balance_infos) { throw 'DeepSeek 响应缺少 balance_infos/is_available' }
-        $infos = @($data.balance_infos)
-        if ($infos.Count -eq 0) { throw 'DeepSeek 响应 balance_infos 为空' }
-        $parts = @()
-        foreach ($b in $infos) {
-          $cur = [string]$b.currency
-          $sym = if ($cur -eq 'CNY') { '¥' } elseif ($cur -eq 'USD') { '$' } else { $cur + ' ' }
-          $parts += ($sym + [string]$b.total_balance)
-        }
-        $text = if ($parts.Count -gt 0) { $parts -join '  ·  ' } else { '暂无余额信息' }
-        $ok = ($data.is_available -eq $true)
-        $meta = $model + ' · ' + $(if ($ok) { '可用' } else { '不可用' }) + ' · 双击刷新'
-      }
-      'openrouter' {
-        if ($null -eq $data.data -or $null -eq $data.data.total_credits -or $null -eq $data.data.total_usage) { throw 'OpenRouter 响应缺少 total_credits/total_usage' }
-        $credits = [double]$data.data.total_credits
-        $usage = [double]$data.data.total_usage
-        $left = $credits - $usage
-        $text = '$' + $left.ToString('0.00')
-        $ok = ($left -gt 0)
-        $meta = $model + ' · 剩余 · 双击刷新'
-      }
-      'moonshot' {
-        if ($null -eq $data.data -or $null -eq $data.data.available_balance) { throw 'Moonshot 响应缺少 available_balance' }
-        $text = '¥' + [string]$data.data.available_balance
-        $meta = $model + ' · 可用 · 双击刷新'
-      }
-      default {
-        $text = '暂无余额信息'
-        $ok = $false
-        $meta = $model
-      }
-    }
-    $dot = if ($ok) { '#3DDC97' } else { '#FF6B6B' }
-    Set-BalanceBubble $title $text $meta $dot
-  } catch {
-    Set-BalanceBubble $title '解析余额失败' '双击重试' '#FF6B6B'
-  }
-}
 
 function Toggle-Collapsed {
   if ($script:BubbleHost.Visibility -ne [Windows.Visibility]::Visible) {
@@ -1551,119 +1358,8 @@ function Open-ConfigFile {
   try { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $script:ConfigPath + '"') | Out-Null } catch { }
 }
 
-function Compare-SemVer([string]$a, [string]$b) {
-  $norm = {
-    param($v)
-    $x = $v.Trim()
-    if ($x.StartsWith('v') -or $x.StartsWith('V')) { $x = $x.Substring(1) }
-    return $x.Split('+')[0]
-  }
-  $pa = (& $norm $a).Split('-')
-  $pb = (& $norm $b).Split('-')
-  $na = @($pa[0].Split('.') | ForEach-Object { $n = 0; [void][int]::TryParse(($_ -replace '[^0-9].*$', ''), [ref]$n); $n })
-  $nb = @($pb[0].Split('.') | ForEach-Object { $n = 0; [void][int]::TryParse(($_ -replace '[^0-9].*$', ''), [ref]$n); $n })
-  for ($i = 0; $i -lt 3; $i++) {
-    $x = if ($i -lt $na.Count) { $na[$i] } else { 0 }
-    $y = if ($i -lt $nb.Count) { $nb[$i] } else { 0 }
-    if ($x -gt $y) { return 1 }
-    if ($x -lt $y) { return -1 }
-  }
-  $pra = if ($pa.Count -gt 1) { $pa[1] } else { '' }
-  $prb = if ($pb.Count -gt 1) { $pb[1] } else { '' }
-  if (-not $pra -and -not $prb) { return 0 }
-  if (-not $pra) { return 1 }
-  if (-not $prb) { return -1 }
-  return [string]::CompareOrdinal($pra, $prb)
-}
 
-function Check-Update {
-  if ($null -ne $script:UpdateJob) {
-    try {
-      if ($script:UpdateJob.State -eq 'Running' -or $script:UpdateJob.State -eq 'NotStarted') { return }
-    } catch { }
-  }
-  try {
-    $script:UpdateStarted = [DateTime]::Now
-    $script:UpdateJob = Start-Job -ScriptBlock {
-      try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/PCYBlurF/dsh-fish-buddy/releases/latest' -Headers @{ 'User-Agent' = 'dsh-fish-buddy' } -TimeoutSec 8
-        return @{ ok = $true; rel = $rel }
-      } catch {
-        return @{ ok = $false; error = $_.Exception.Message }
-      }
-    }
-  } catch {
-    [void][System.Windows.MessageBox]::Show(('检查更新失败：`n' + $_.Exception.Message), 'DSH 大肥鱼 · 检查更新', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-    return
-  }
-  if ($null -eq $script:UpdateTimer) {
-    $script:UpdateTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $script:UpdateTimer.Interval = [TimeSpan]::FromMilliseconds(300)
-    $script:UpdateTimer.Add_Tick({ Update-CheckJob })
-  }
-  $script:UpdateTimer.Start()
-}
 
-function Update-CheckJob {
-  $title = 'DSH 大肥鱼 · 检查更新'
-  if ($null -eq $script:UpdateJob) { try { $script:UpdateTimer.Stop() } catch { }; return }
-  $state = [string]$script:UpdateJob.State
-  if ($state -eq 'Running' -or $state -eq 'NotStarted') {
-    if (([DateTime]::Now - $script:UpdateStarted).TotalSeconds -gt 10) {
-      try { Stop-Job -Job $script:UpdateJob -ErrorAction SilentlyContinue } catch { }
-      try { Remove-Job -Job $script:UpdateJob -Force -ErrorAction SilentlyContinue } catch { }
-      $script:UpdateJob = $null
-      try { $script:UpdateTimer.Stop() } catch { }
-      [void][System.Windows.MessageBox]::Show('检查更新超时，请检查网络后重试。', $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-    }
-    return
-  }
-  $out = $null
-  try { $out = (@(Receive-Job -Job $script:UpdateJob -ErrorAction Stop) | Select-Object -Last 1) } catch { }
-  try { Remove-Job -Job $script:UpdateJob -Force -ErrorAction SilentlyContinue } catch { }
-  $script:UpdateJob = $null
-  try { $script:UpdateTimer.Stop() } catch { }
-  if ($null -eq $out -or -not $out.ok) {
-    $msg = if ($null -ne $out) { [string]$out.error } else { '空响应' }
-    [void][System.Windows.MessageBox]::Show(("检查更新失败：`n" + $msg), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-    return
-  }
-  $rel = $out.rel
-  try {
-    if ($rel.draft -or $rel.prerelease) {
-      [void][System.Windows.MessageBox]::Show('最新 release 是预发布版本，已跳过。', $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
-      return
-    }
-    $latest = [string]$rel.tag_name
-    if (-not $latest) {
-      [void][System.Windows.MessageBox]::Show('还没有发布版本。', $title)
-      return
-    }
-    $currentVersion = Get-WidgetVersion
-    $cur = 'v' + $currentVersion
-    $isNew = $false
-    try { $isNew = (Compare-SemVer $latest $currentVersion) -gt 0 } catch {
-      [void][System.Windows.MessageBox]::Show(("无法解析版本号：$latest"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-      return
-    }
-    if ($isNew) {
-      $r = [System.Windows.MessageBox]::Show(("发现新版本 $latest。`n`n当前版本 $cur`n`n是否打开下载页？"), $title, [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
-      if ($r -eq [System.Windows.MessageBoxResult]::Yes) {
-        $downloadUrl = [string]$rel.html_url
-        if (Test-AllowedReleaseUrl $downloadUrl) {
-          try { Start-Process $downloadUrl | Out-Null } catch { }
-        } else {
-          [void][System.Windows.MessageBox]::Show(("下载页地址未通过校验，已拒绝打开：`n$downloadUrl"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-        }
-      }
-    } else {
-      [void][System.Windows.MessageBox]::Show(("当前已是最新版本 $cur。"), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
-    }
-  } catch {
-    [void][System.Windows.MessageBox]::Show(("检查更新失败：`n" + $_.Exception.Message), $title, [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-  }
-}
 
 function Show-About {
   $text = "DSH 大肥鱼 v$script:Version`n`n桌面鲸鱼娘进度挂件 for DeepSeek Harness`n`nMIT License`nhttps://github.com/PCYBlurF/dsh-fish-buddy`n`n非官方同人项目"
@@ -2365,6 +2061,8 @@ $script:Tick = New-Object System.Windows.Threading.DispatcherTimer
 $script:Tick.Interval = [TimeSpan]::FromMilliseconds(400)
 $script:Tick.Add_Tick({
   try {
+    if ($null -ne $script:BalanceJob) { Update-BalanceJob }
+    if ($null -ne $script:UpdateJob) { Update-CheckJob }
     if ($Preview) {
       Apply-State $script:PreviewState
       if ($Preview -eq 'done' -and -not $script:PreviewCelebrated) {
@@ -2477,7 +2175,6 @@ $script:Window.Add_Closing({
   try { $script:Tick.Stop() } catch { }
   try { $script:BlinkTimer.Stop() } catch { }
   try { $script:FrameTimer.Stop() } catch { }
-  try { $script:BalancePoll.Stop() } catch { }
   try { $script:BalanceRestore.Stop() } catch { }
   try { if ($null -ne $script:BalanceJob) { Stop-Job -Job $script:BalanceJob -ErrorAction SilentlyContinue; Remove-Job -Job $script:BalanceJob -Force -ErrorAction SilentlyContinue } } catch { }
 })
