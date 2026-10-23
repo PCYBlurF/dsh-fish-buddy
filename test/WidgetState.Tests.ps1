@@ -1,11 +1,12 @@
-function Get-Prop($obj, [string]$name) {
-  if ($null -eq $obj) { return $null }
-  $p = $obj.PSObject.Properties[$name]
-  if ($null -eq $p) { return $null }
-  return $p.Value
+BeforeAll {
+  function Get-Prop($obj, [string]$name) {
+    if ($null -eq $obj) { return $null }
+    $p = $obj.PSObject.Properties[$name]
+    if ($null -eq $p) { return $null }
+    return $p.Value
+  }
+  . (Join-Path $PSScriptRoot '..\bin\widget-state.ps1')
 }
-
-. (Join-Path $PSScriptRoot '..\bin\widget-state.ps1')
 
 Describe 'Get-WidgetPhase' {
   It 'working' {
