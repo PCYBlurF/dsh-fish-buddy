@@ -24,7 +24,7 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-$script:Version = '0.1.22'
+$script:Version = '0.1.23'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
 . (Join-Path $script:BinDir 'widget-balance.ps1')
 . (Join-Path $script:BinDir 'widget-update.ps1')
@@ -770,6 +770,9 @@ function Set-Pin([string]$id) {
     Save-JsonFile $script:UiPath $script:Ui
   } catch { }
   Write-DebugLog ("pin session: '" + $id + "'")
+  # 强制下一 tick 重新应用，否则引用相同的 state 会被跳过
+  $script:LastAppliedState = $null
+  try { if ($null -ne $script:CurrentState) { Apply-State $script:CurrentState } } catch { }
 }
 
 function Test-WindowOnScreen {
