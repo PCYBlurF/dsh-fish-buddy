@@ -102,6 +102,13 @@ if ($null -eq $script:Ui) {
 
 $script:Collapsed = [bool]$script:Ui.collapsed
 $script:SoundOn = if ($null -ne $script:Ui.sound) { [bool]$script:Ui.sound } else { [bool]$script:Config.sound }
+$script:SoundVolume = 80
+try {
+  if ($null -ne $script:Ui.soundVolume) {
+    $v = [int]$script:Ui.soundVolume
+    if ($v -ge 0 -and $v -le 100) { $script:SoundVolume = $v }
+  }
+} catch { }
 $script:NotifyOn = if ($null -ne $script:Ui.notify) { [bool]$script:Ui.notify } else { -not ($null -ne $script:Config.notify -and $script:Config.notify -eq $false) }
 $script:Topmost = if ($null -ne $script:Ui.topmost) { [bool]$script:Ui.topmost } else { $true }
 $script:Material = 'default'

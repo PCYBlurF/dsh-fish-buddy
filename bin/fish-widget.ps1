@@ -24,7 +24,7 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-$script:Version = '0.1.23'
+$script:Version = '0.1.24'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
 . (Join-Path $script:BinDir 'widget-balance.ps1')
 . (Join-Path $script:BinDir 'widget-update.ps1')
@@ -189,14 +189,15 @@ $script:SbDot = $script:Window.Resources['DotPulse']
 $script:Player = $null
 try {
   if (Test-Path -LiteralPath $script:ChimePath) {
-    $script:Player = New-Object System.Media.SoundPlayer $script:ChimePath
-    $script:Player.Load()
+    $script:Player = New-Object System.Windows.Media.MediaPlayer
+    $script:Player.Open([uri]$script:ChimePath)
+    $script:Player.Volume = $script:SoundVolume / 100.0
   }
 } catch { }
 
 function Play-Chime {
   if (-not $script:SoundOn) { return }
-  try { if ($null -ne $script:Player) { $script:Player.Play() } } catch { }
+  try { if ($null -ne $script:Player) { $script:Player.Position = [TimeSpan]::Zero; $script:Player.Play() } } catch { }
 }
 
 # ── 后端进程 ─────────────────────────────────────────────────────────────
@@ -1400,6 +1401,24 @@ function Add-SettingsMenu {
   [void](Add-SubItem $set $notify { Toggle-Notify })
   $top = if ($script:Topmost) { '总在最前：开' } else { '总在最前：关' }
   [void](Add-SubItem $set $top { Toggle-Topmost })
+  $volMenu = New-Object System.Windows.Forms.ToolStripMenuItem
+  $volMenu.Text = '提示音音量'
+  $volMenu.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $volMenu.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $volMenu.Padding = New-Object System.Windows.Forms.Padding(8, 4, 10, 4)
+  $volMenu.DropDown.ShowImageMargin = $false
+  $volMenu.DropDown.ShowCheckMargin = $false
+  $volMenu.DropDown.BackColor = [System.Drawing.Color]::FromArgb(18, 26, 50)
+  $volMenu.DropDown.ForeColor = [System.Drawing.Color]::FromArgb(242, 246, 255)
+  $volMenu.DropDown.Font = $script:Menu.Font
+  try { $volMenu.DropDown.Renderer = $script:Menu.Renderer } catch { }
+  foreach ($v in @(0, 25, 50, 75, 100)) {
+    $label = if ($script:SoundVolume -eq $v) { "✓ $v%" } else { "  $v%" }
+    $it = Add-SubItem $volMenu $label $null
+    $it.Tag = $v
+    $it.Add_Click({ param($snd, $ev) Set-SoundVolume ([int]$snd.Tag) })
+  }
+  [void]$set.DropDownItems.Add($volMenu)
   [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-SubItem $set '重启后端' { Restart-Core })
   [void](Add-SubItem $set '打开日志' { Open-Log })
@@ -1675,6 +1694,16 @@ function Set-Material([string]$m) {
       Set-MenuTheme $script:Tray.ContextMenuStrip $script:Material
     }
   } catch { }
+}
+
+function Set-SoundVolume([int]$volume) {
+  $volume = [Math]::Max(0, [Math]::Min(100, $volume))
+  $script:SoundVolume = $volume
+  if ($null -ne $script:Player) {
+    try { $script:Player.Volume = $volume / 100.0 } catch { }
+  }
+  $script:Ui | Add-Member -NotePropertyName soundVolume -NotePropertyValue $volume -Force
+  Save-WindowPos
 }
 
 function Toggle-Sound {
