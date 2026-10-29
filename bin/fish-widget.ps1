@@ -24,7 +24,7 @@ $script:ChimePath = Join-Path $script:AppDir 'assets\chime.wav'
 $script:CorePath = Join-Path $script:BinDir 'fish-core.mjs'
 $script:WidgetLog = Join-Path $script:AppDir 'logs\widget.log'
 $script:PidPath = Join-Path $script:AppDir 'widget.pid'
-$script:Version = '0.1.24'
+$script:Version = '0.1.25'
 . (Join-Path $script:BinDir 'widget-lib.ps1')
 . (Join-Path $script:BinDir 'widget-balance.ps1')
 . (Join-Path $script:BinDir 'widget-update.ps1')
@@ -1381,6 +1381,22 @@ function Add-SubItem($parent, [string]$text, [scriptblock]$action) {
   return $it
 }
 
+function Show-VolumeInput {
+  try {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $input = [Microsoft.VisualBasic.Interaction]::InputBox('输入 0–100 的音量（%）：', '提示音音量', [string]$script:SoundVolume)
+    if ($null -eq $input -or $input.Trim() -eq '') { return }
+    $v = 0
+    if (-not [int]::TryParse($input.Trim(), [ref]$v) -or $v -lt 0 -or $v -gt 100) {
+      [void][System.Windows.MessageBox]::Show('请输入 0–100 的整数。', '提示音音量', [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+      return
+    }
+    Set-SoundVolume $v
+  } catch {
+    Write-DebugLog ('volume input failed: ' + $_.Exception.Message)
+  }
+}
+
 function Add-SettingsMenu {
   $set = New-Object System.Windows.Forms.ToolStripMenuItem
   $set.Text = '设置'
@@ -1418,6 +1434,10 @@ function Add-SettingsMenu {
     $it.Tag = $v
     $it.Add_Click({ param($snd, $ev) Set-SoundVolume ([int]$snd.Tag) })
   }
+  $presets = @(0, 25, 50, 75, 100)
+  $customLabel = if ($presets -notcontains $script:SoundVolume) { "自定义：$($script:SoundVolume)%" } else { '自定义…' }
+  $custom = Add-SubItem $volMenu $customLabel $null
+  $custom.Add_Click({ Show-VolumeInput })
   [void]$set.DropDownItems.Add($volMenu)
   [void]$set.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
   [void](Add-SubItem $set '重启后端' { Restart-Core })
